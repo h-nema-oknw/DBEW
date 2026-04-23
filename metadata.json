@@ -1,0 +1,6 @@
+{
+  "name": "DBEW",
+  "description": "ER図、AI解析、Markdownエクスポート機能を備えた、データベース設計・仕様策定ツール。",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

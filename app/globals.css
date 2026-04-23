@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Suppress dev overlays during heavy resizing/rendering */
+nextjs-portal, 
+nextjs-dev-overlay, 
+[data-nextjs-dialog-overlay] {
+  display: none !important;
+}
