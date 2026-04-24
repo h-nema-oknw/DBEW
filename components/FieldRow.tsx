@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import { Field, AppSettings } from '@/lib/types';
 import { GripVertical, X } from 'lucide-react';
 import { Draggable } from '@hello-pangea/dnd';
@@ -29,6 +29,42 @@ export const FieldRow = memo(({
   const env = dbEnvironments.find(e => e.id === environmentId);
   const typeExists = env?.defaultTypes.some(t => t.name === field.type);
 
+  const [localName, setLocalName] = useState(field.name || "");
+  const [localLength, setLocalLength] = useState(field.length || "");
+  const [localNotes, setLocalNotes] = useState(field.notes || "");
+
+  useEffect(() => { setLocalName(field.name || ""); }, [field.name]);
+  useEffect(() => { setLocalLength(field.length || ""); }, [field.length]);
+  useEffect(() => { setLocalNotes(field.notes || ""); }, [field.notes]);
+
+  const handleNameBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (localName !== field.name) {
+      if (onValidateFieldName(tableId, field.id, localName, e.target)) {
+        onUpdateField(tableId, field.id, { name: localName });
+      } else {
+        setLocalName(field.name || "");
+      }
+    }
+  };
+
+  const handleLengthBlur = () => {
+    if (localLength !== field.length) {
+      onUpdateField(tableId, field.id, { length: localLength });
+    }
+  };
+
+  const handleNotesBlur = () => {
+    if (localNotes !== field.notes) {
+      onUpdateField(tableId, field.id, { notes: localNotes });
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      (e.target as HTMLInputElement).blur();
+    }
+  };
+
   return (
     <Draggable draggableId={field.id} index={index}>
       {(provided, snapshot) => (
@@ -52,9 +88,10 @@ export const FieldRow = memo(({
           </td>
           <td className="px-4 py-1.5">
             <input 
-              value={field.name || ""}
-              onChange={(e) => onUpdateField(tableId, field.id, { name: e.target.value })}
-              onBlur={(e) => onValidateFieldName(tableId, field.id, e.target.value, e.target)}
+              value={localName}
+              onChange={(e) => setLocalName(e.target.value)}
+              onBlur={handleNameBlur}
+              onKeyDown={handleKeyDown}
               className="w-full bg-transparent border-none focus:ring-0 p-0 font-mono text-sky-300 outline-none"
             />
           </td>
@@ -90,8 +127,10 @@ export const FieldRow = memo(({
           </td>
           <td className="px-4 py-1.5">
             <input 
-              value={field.length || ""}
-              onChange={(e) => onUpdateField(tableId, field.id, { length: e.target.value })}
+              value={localLength}
+              onChange={(e) => setLocalLength(e.target.value)}
+              onBlur={handleLengthBlur}
+              onKeyDown={handleKeyDown}
               className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-500 outline-none"
             />
           </td>
@@ -105,8 +144,10 @@ export const FieldRow = memo(({
           </td>
           <td className="px-4 py-1.5">
             <input 
-              value={field.notes || ""}
-              onChange={(e) => onUpdateField(tableId, field.id, { notes: e.target.value })}
+              value={localNotes}
+              onChange={(e) => setLocalNotes(e.target.value)}
+              onBlur={handleNotesBlur}
+              onKeyDown={handleKeyDown}
               placeholder="備考を入力..."
               className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-500 italic outline-none"
             />

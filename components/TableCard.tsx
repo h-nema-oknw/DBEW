@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import { Table, Field, AppSettings } from '@/lib/types';
 import { Table as TableIcon, Copy, Trash2, Plus } from 'lucide-react';
 import { Droppable, DragDropContext, DropResult } from '@hello-pangea/dnd';
@@ -39,6 +39,39 @@ export const TableCard = memo(({
   onDeleteField,
   onDragEnd,
 }: TableCardProps) => {
+  const [localName, setLocalName] = useState(table.name || "");
+  const [localDescription, setLocalDescription] = useState(table.description || "");
+
+  useEffect(() => {
+    setLocalName(table.name || "");
+  }, [table.name]);
+
+  useEffect(() => {
+    setLocalDescription(table.description || "");
+  }, [table.description]);
+
+  const handleNameBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (localName !== table.name) {
+      if (onValidateTableName(table.id, localName, e.target)) {
+        onUpdateTable(table.id, { name: localName });
+      } else {
+        setLocalName(table.name || "");
+      }
+    }
+  };
+
+  const handleDescriptionBlur = () => {
+    if (localDescription !== table.description) {
+      onUpdateTable(table.id, { description: localDescription });
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      (e.target as HTMLInputElement).blur();
+    }
+  };
+
   return (
     <div 
       id={`table-card-${table.id}`} 
@@ -49,9 +82,10 @@ export const TableCard = memo(({
         <div className="flex items-center gap-3">
           <TableIcon size={16} className={isSelected ? 'text-sky-300' : 'text-sky-400'} />
           <input 
-            value={table.name || ""}
-            onChange={(e) => onUpdateTable(table.id, { name: e.target.value })}
-            onBlur={(e) => onValidateTableName(table.id, e.target.value, e.target)}
+            value={localName}
+            onChange={(e) => setLocalName(e.target.value)}
+            onBlur={handleNameBlur}
+            onKeyDown={handleKeyDown}
             className="font-bold text-sm bg-transparent border-none focus:ring-0 p-0 text-slate-200 tracking-tight"
           />
         </div>
@@ -78,8 +112,10 @@ export const TableCard = memo(({
       
       <div className="p-3 border-b border-slate-800/50 bg-[#111827]/30">
         <input 
-          value={table.description || ""}
-          onChange={(e) => onUpdateTable(table.id, { description: e.target.value })}
+          value={localDescription}
+          onChange={(e) => setLocalDescription(e.target.value)}
+          onBlur={handleDescriptionBlur}
+          onKeyDown={handleKeyDown}
           placeholder="テーブル概要を追加..."
           className="w-full text-[11px] text-slate-500 bg-transparent border-none focus:ring-0 p-0 italic truncate"
         />

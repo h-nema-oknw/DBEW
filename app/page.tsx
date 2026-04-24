@@ -260,6 +260,7 @@ export default function Home() {
   const [newRelTargetTableId, setNewRelTargetTableId] = useState<string>('');
   const [newRelTargetFieldId, setNewRelTargetFieldId] = useState<string>('');
   const [importText, setImportText] = useState('');
+  const [importMode, setImportMode] = useState<'replace' | 'append'>('replace');
   const [showImportModal, setShowImportModal] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -866,17 +867,41 @@ export default function Home() {
     setIsAIAnalyzing(true);
     try {
       const analyzed = await analyzeMarkdown(importText, settings.geminiApiKey);
+      
+      // Calculate start position for new tables if appending
+      let startX = 50;
+      let startY = 100;
+      
+      if (importMode === 'append' && project.tables.length > 0) {
+        // Find the rightmost position of existing tables
+        const maxX = Math.max(...project.tables.map(t => t.position.x));
+        startX = maxX + 300;
+      }
+
       // Map analyzed data to full project structure
-      const newTables: Table[] = (analyzed.tables || []).map((t: any, i: number) => ({
-        id: crypto.randomUUID(),
-        name: t.name || 'Table',
-        description: t.description || '',
-        fields: (t.fields || []).map((f: any) => ({
+      const newTables: Table[] = (analyzed.tables || []).map((t: any, i: number) => {
+        // Handle name duplicates when appending
+        let finalName = t.name || 'Table';
+        if (importMode === 'append') {
+          let counter = 1;
+          const originalName = finalName;
+          while (project.tables.some(et => et.name.toLowerCase() === finalName.toLowerCase())) {
+            finalName = `${originalName}_${counter}`;
+            counter++;
+          }
+        }
+
+        return {
           id: crypto.randomUUID(),
-          ...f
-        })),
-        position: { x: 50 + i * 250, y: 100 }
-      }));
+          name: finalName,
+          description: t.description || '',
+          fields: (t.fields || []).map((f: any) => ({
+            id: crypto.randomUUID(),
+            ...f
+          })),
+          position: { x: startX + i * 250, y: startY }
+        };
+      });
 
       // Basic relation mapping
       const newRelations: Relation[] = (analyzed.relations || []).map((r: any) => {
@@ -898,19 +923,31 @@ export default function Home() {
         };
       }).filter(r => r.sourceTableId && r.targetTableId);
 
-      setProject({
-        ...project,
-        name: analyzed.name || project.name,
-        description: analyzed.description || project.description,
-        dbType: analyzed.dbType as DBType || project.dbType,
-        language: analyzed.language || project.language,
-        context: analyzed.context || project.context,
-        tables: newTables,
-        relations: newRelations,
-        updatedAt: Date.now()
-      });
+      if (importMode === 'replace') {
+        setProject({
+          ...project,
+          name: analyzed.name || project.name,
+          description: analyzed.description || project.description,
+          dbType: analyzed.dbType as DBType || project.dbType,
+          language: analyzed.language || project.language,
+          context: analyzed.context || project.context,
+          tables: newTables,
+          relations: newRelations,
+          updatedAt: Date.now()
+        });
+      } else {
+        // Append mode
+        setProject({
+          ...project,
+          tables: [...project.tables, ...newTables],
+          relations: [...project.relations, ...newRelations],
+          updatedAt: Date.now()
+        });
+      }
+      
       setShowImportModal(false);
       setImportText('');
+      setImportMode('replace'); // Reset to default
     } catch (e) {
       alert('AI解析に失敗しました。Markdownの形式を確認してください。');
     } finally {
@@ -1912,31 +1949,44 @@ export default function Home() {
               
               <div className="p-8 flex-1 overflow-hidden flex flex-col gap-6 bg-[#0F172A]">
                 {!importText ? (
-                  <div 
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`flex-1 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-4 transition-all cursor-pointer ${
-                      isDragging 
-                        ? 'border-sky-500 bg-sky-500/10 scale-[1.02]' 
-                        : 'border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-900'
-                    }`}
-                  >
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      onChange={handleFileUpload} 
-                      accept=".md" 
-                      className="hidden" 
-                    />
-                    <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 group-hover:text-sky-400 transition-colors">
-                      <Upload size={32} />
+                  <div className="flex-1 flex flex-col gap-4">
+                    <div 
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`flex-1 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-4 transition-all cursor-pointer ${
+                        isDragging 
+                          ? 'border-sky-500 bg-sky-500/10 scale-[1.02]' 
+                          : 'border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-900'
+                      }`}
+                    >
+                      <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        onChange={handleFileUpload} 
+                        accept=".md" 
+                        className="hidden" 
+                      />
+                      <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 group-hover:text-sky-400 transition-colors">
+                        <Upload size={32} />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-slate-200">ファイルをドラッグ＆ドロップ</p>
+                        <p className="text-sm text-slate-500 mt-1">またはクリックしてファイルを選択 (.md)</p>
+                      </div>
                     </div>
-                    <div className="text-center">
-                      <p className="text-lg font-bold text-slate-200">ファイルをドラッグ＆ドロップ</p>
-                      <p className="text-sm text-slate-500 mt-1">またはクリックしてファイルを選択 (.md)</p>
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1 h-[1px] bg-slate-800"></div>
+                      <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">または</span>
+                      <div className="flex-1 h-[1px] bg-slate-800"></div>
                     </div>
+                    <button 
+                      onClick={() => setImportText(' ')} // Space to trigger textarea view
+                      className="w-full py-4 bg-slate-800/50 border border-slate-700 rounded-xl text-slate-300 font-bold text-sm hover:bg-slate-800 hover:text-white transition-all flex items-center justify-center gap-2"
+                    >
+                      <FileText size={18} /> 仕様テキストを直接貼り付ける
+                    </button>
                   </div>
                 ) : (
                   <div className="flex-1 flex flex-col gap-4 overflow-hidden">
@@ -1985,28 +2035,111 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="p-6 border-t border-slate-700 flex justify-end gap-3 bg-slate-800/50">
+              <div className="p-6 border-t border-slate-700 flex items-center justify-between bg-slate-800/50">
+                <div className="flex bg-[#0a0f1c] p-1 rounded-lg border border-slate-700">
+                  <button 
+                    onClick={() => setImportMode('replace')}
+                    className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all ${
+                      importMode === 'replace' 
+                        ? "bg-sky-600 text-white shadow-lg shadow-sky-500/20" 
+                        : "text-slate-500 hover:text-slate-300"
+                    }`}
+                  >
+                    上書き
+                  </button>
+                  <button 
+                    onClick={() => setImportMode('append')}
+                    className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all ${
+                      importMode === 'append' 
+                        ? "bg-sky-600 text-white shadow-lg shadow-sky-500/20" 
+                        : "text-slate-500 hover:text-slate-300"
+                    }`}
+                  >
+                    追加
+                  </button>
+                </div>
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setShowImportModal(false)}
+                    className="px-6 py-2 text-slate-400 font-bold text-xs uppercase tracking-widest hover:text-white transition-all"
+                  >
+                    キャンセル
+                  </button>
+                  <button 
+                    onClick={handleAIImport}
+                    disabled={!importText || !importText.trim() || isAIAnalyzing}
+                    className="px-8 py-2.5 bg-sky-600 text-white font-bold rounded-lg hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-lg shadow-sky-500/10"
+                  >
+                    {isAIAnalyzing ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        設計を分析中...
+                      </>
+                    ) : (
+                      <>
+                        <Play size={16} fill="currentColor" /> AIで処理を開始
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Table Delete Confirmation Modal */}
+      <AnimatePresence>
+        {showTableDeleteConfirmModal && confirmTableDeleteId && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[60] flex items-center justify-center p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-[#1E293B] border border-slate-700 w-full max-w-md rounded-xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-700 flex items-center justify-between bg-slate-800/30">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Trash2 size={20} className="text-red-500" /> テーブル削除の確認
+                </h3>
                 <button 
-                  onClick={() => setShowImportModal(false)}
-                  className="px-6 py-2 text-slate-400 font-bold text-xs uppercase tracking-widest hover:text-white transition-all"
+                  onClick={() => setShowTableDeleteConfirmModal(false)}
+                  className="p-1 hover:bg-slate-700 rounded text-slate-500 hover:text-white transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="p-8 text-center bg-[#0F172A]/50">
+                <p className="text-slate-300 text-sm leading-relaxed mb-2">
+                  <span className="text-red-400 font-bold block mb-1">
+                    「{project.tables.find(t => t.id === confirmTableDeleteId)?.name}」
+                  </span>
+                  を本当に削除してよろしいですか？
+                </p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+                  テーブル内の全フィールドと関連するリレーションも削除されます
+                </p>
+              </div>
+
+              <div className="p-6 border-t border-slate-700 bg-slate-800/30 flex justify-end gap-3">
+                <button 
+                  onClick={() => setShowTableDeleteConfirmModal(false)}
+                  className="px-5 py-2 text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:text-white transition-all"
                 >
                   キャンセル
                 </button>
                 <button 
-                  onClick={handleAIImport}
-                  disabled={!importText || isAIAnalyzing}
-                  className="px-8 py-2.5 bg-sky-600 text-white font-bold rounded-lg hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-lg shadow-sky-500/10"
+                  onClick={() => deleteTable(confirmTableDeleteId)}
+                  className="px-6 py-2 bg-red-600 text-white font-black text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-500 transition-all shadow-lg shadow-red-500/10"
                 >
-                  {isAIAnalyzing ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      設計を分析中...
-                    </>
-                  ) : (
-                    <>
-                      <Play size={16} fill="currentColor" /> AIで処理を開始
-                    </>
-                  )}
+                  はい、削除します
                 </button>
               </div>
             </motion.div>

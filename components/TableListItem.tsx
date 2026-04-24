@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import { Table } from '@/lib/types';
 import { GripVertical, Table as TableIcon, Copy, Trash2 } from 'lucide-react';
 import { Draggable } from '@hello-pangea/dnd';
@@ -24,6 +24,24 @@ export const TableListItem = memo(({
   onCopy, 
   onDeleteRequest 
 }: TableListItemProps) => {
+  const [localName, setLocalName] = useState(table.name || "");
+
+  useEffect(() => {
+    setLocalName(table.name || "");
+  }, [table.name]);
+
+  const handleBlur = () => {
+    if (localName !== table.name) {
+      onUpdate(table.id, { name: localName });
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      (e.target as HTMLInputElement).blur();
+    }
+  };
+
   return (
     <Draggable draggableId={table.id} index={index}>
       {(provided, snapshot) => (
@@ -39,8 +57,10 @@ export const TableListItem = memo(({
             </div>
             <TableIcon size={12} className={isSelected ? 'text-sky-400' : 'text-slate-600'} />
             <input 
-              value={table.name || ""}
-              onChange={(e) => onUpdate(table.id, { name: e.target.value })}
+              value={localName}
+              onChange={(e) => setLocalName(e.target.value)}
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
               onClick={(e) => e.stopPropagation()}
               className="bg-transparent border-none focus:ring-0 p-0 text-xs font-medium w-full text-current focus:text-white"
             />
