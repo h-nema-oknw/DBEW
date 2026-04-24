@@ -105,6 +105,8 @@ interface DiagramProps {
   onUpdateTable: (id: string, updates: Partial<Table>) => void;
   onAddField: (tableId: string) => void;
   onUpdateField: (tableId: string, fieldId: string, updates: Partial<Field>) => void;
+  onValidateTableName: (id: string, name: string, element: HTMLInputElement) => boolean;
+  onValidateFieldName: (tableId: string, fieldId: string, name: string, element: HTMLInputElement) => boolean;
   onSelectTable: (id: string | null) => void;
   selectedTableId: string | null;
   onDeleteNode?: (id: string) => void;
@@ -123,6 +125,8 @@ function DiagramInner({
   onUpdateTable,
   onAddField,
   onUpdateField,
+  onValidateTableName,
+  onValidateFieldName,
   onSelectTable,
   selectedTableId,
   searchTriggerId,
@@ -159,11 +163,13 @@ function DiagramInner({
         onUpdateTable,
         onAddField,
         onUpdateField,
+        onValidateTableName,
+        onValidateFieldName,
         viewMode,
         relatedFieldIds
       },
     }));
-  }, [tables, onUpdateTable, onAddField, onUpdateField, selectedTableId, viewMode, relatedFieldIds]);
+  }, [tables, onUpdateTable, onAddField, onUpdateField, onValidateTableName, onValidateFieldName, selectedTableId, viewMode, relatedFieldIds]);
 
   const edges = useMemo(() => {
     const counts: Record<string, number> = {};

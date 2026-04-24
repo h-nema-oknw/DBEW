@@ -239,6 +239,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   geminiApiKey: ''
 };
 
+import { TableListItem } from '@/components/TableListItem';
+import { TableCard } from '@/components/TableCard';
+
 export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -260,6 +263,8 @@ export default function Home() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [showTableDeleteConfirmModal, setShowTableDeleteConfirmModal] = useState(false);
+  const [confirmTableDeleteId, setConfirmTableDeleteId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -422,19 +427,40 @@ export default function Home() {
     }, 0);
     return () => {
       clearTimeout(timer);
-      window.removeEventListener('error', errorHandler);
-      window.removeEventListener('unhandledrejection', errorHandler);
     };
   }, []);
 
-  // Persistent Projects & Settings Sync
+  // Persistent Projects & Settings Sync (Debounced to improve performance)
   useEffect(() => {
-    if (mounted) {
-      localStorage.setItem('schemaforge_projects', JSON.stringify(projects));
-      localStorage.setItem('schemaforge_active_project_id', currentProjectId);
-      localStorage.setItem('schemaforge_settings', JSON.stringify(settings));
-    }
-  }, [projects, currentProjectId, settings, mounted]);
+    if (!mounted) return;
+    
+    const syncTimer = setTimeout(() => {
+      setProjects(prevProjects => {
+        const index = prevProjects.findIndex(p => p.id === project.id);
+        const updatedProjects = [...prevProjects];
+        
+        if (index === -1) {
+          updatedProjects.push(project);
+        } else if (prevProjects[index] !== project) {
+          updatedProjects[index] = project;
+        } else {
+          // If no change to projects list, still need to sync current projects to localStorage
+          localStorage.setItem('schemaforge_projects', JSON.stringify(prevProjects));
+          localStorage.setItem('schemaforge_active_project_id', currentProjectId);
+          localStorage.setItem('schemaforge_settings', JSON.stringify(settings));
+          return prevProjects;
+        }
+
+        // Save the newly updated list
+        localStorage.setItem('schemaforge_projects', JSON.stringify(updatedProjects));
+        localStorage.setItem('schemaforge_active_project_id', currentProjectId);
+        localStorage.setItem('schemaforge_settings', JSON.stringify(settings));
+        return updatedProjects;
+      });
+    }, 1000);
+
+    return () => clearTimeout(syncTimer);
+  }, [project, currentProjectId, settings, mounted]); // Dependency on project (the active one)
 
   const switchProject = (id: string) => {
     const target = projects.find(p => p.id === id);
@@ -517,13 +543,7 @@ export default function Home() {
     setSelectedTableId(null);
   }, [projects]);
 
-  if (!mounted) {
-    return <div className="h-screen bg-[#0F172A] flex items-center justify-center">
-      <div className="w-10 h-10 border-4 border-sky-500 border-t-transparent rounded-full animate-spin" />
-    </div>;
-  }
-
-  const handleUpdateProject = (updates: Partial<Project>) => {
+  const handleUpdateProject = useCallback((updates: Partial<Project>) => {
     setProject(prev => {
       const updated = { ...prev, ...updates, updatedAt: Date.now() };
       setProjects(prevProjects => {
@@ -535,137 +555,267 @@ export default function Home() {
       });
       return updated;
     });
-  };
+  }, []);
 
-  const addTable = () => {
-    const defaultName = `テーブル_${project.tables.length + 1}`;
-    if (project.tables.some(t => t.name.toLowerCase() === defaultName.toLowerCase())) {
-      alert(`「${defaultName}」は既に存在します。別の名前に変更してから追加してください。`);
-      return;
-    }
+  const addTable = useCallback(() => {
+    setProject(currentProject => {
+      const defaultName = `テーブル_${currentProject.tables.length + 1}`;
+      if (currentProject.tables.some(t => t.name.toLowerCase() === defaultName.toLowerCase())) {
+        alert(`「${defaultName}」は既に存在します。別の名前に変更してから追加してください。`);
+        return currentProject;
+      }
 
-    const newTable: Table = {
-      id: crypto.randomUUID(),
-      name: defaultName,
-      description: 'テーブルの説明',
-      fields: [
-        {
-          id: crypto.randomUUID(),
-          name: 'id',
-          type: 'INT',
-          length: '',
-          isNullable: false,
-          isPrimaryKey: true,
-          isForeignKey: false,
-          notes: '自動インクリメント主キー'
+      const newTable: Table = {
+        id: crypto.randomUUID(),
+        name: defaultName,
+        description: 'テーブルの説明',
+        fields: [
+          {
+            id: crypto.randomUUID(),
+            name: 'id',
+            type: 'INT',
+            length: '',
+            isNullable: false,
+            isPrimaryKey: true,
+            isForeignKey: false,
+            notes: '自動インクリメント主キー'
+          }
+        ],
+        position: { x: 100 + currentProject.tables.length * 50, y: 100 + currentProject.tables.length * 50 }
+      };
+
+      const newTables = [...currentProject.tables, newTable];
+      const updated = { ...currentProject, tables: newTables, updatedAt: Date.now() };
+      
+      setProjects(prevProjects => {
+        const index = prevProjects.findIndex(p => p.id === updated.id);
+        if (index === -1) return [...prevProjects, updated];
+        const newProjects = [...prevProjects];
+        newProjects[index] = updated;
+        return newProjects;
+      });
+
+      setSelectedTableId(newTable.id);
+      setTimeout(() => {
+        const element = document.getElementById(`table-card-${newTable.id}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-      ],
-      position: { x: 100 + project.tables.length * 50, y: 100 + project.tables.length * 50 }
-    };
-    handleUpdateProject({ tables: [...project.tables, newTable] });
-    setSelectedTableId(newTable.id);
+      }, 100);
 
-    // Scroll to the new table in grid view
-    setTimeout(() => {
-      const element = document.getElementById(`table-card-${newTable.id}`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 100);
-  };
+      return updated;
+    });
+  }, []);
 
-  const updateTable = (id: string, updates: Partial<Table>) => {
-    if (updates.hasOwnProperty('name') && updates.name) {
-      const isDuplicate = project.tables.some(t => t.id !== id && t.name.toLowerCase() === updates.name!.toLowerCase());
-      if (isDuplicate) {
-        alert(`テーブル名「${updates.name}」は既に存在します。別の名前を指定してください。`);
-        return;
-      }
+  const updateTable = useCallback((id: string, updates: Partial<Table>) => {
+    setProject(currentProject => {
+      const newTables = currentProject.tables.map(t => t.id === id ? { ...t, ...updates } : t);
+      const updated = { ...currentProject, tables: newTables, updatedAt: Date.now() };
+      return updated;
+    });
+  }, []);
+
+  const validateTableName = useCallback((id: string, name: string, element: HTMLInputElement) => {
+    if (!name) return true;
+    const isDuplicate = project.tables.some(t => t.id !== id && t.name.toLowerCase() === name.trim().toLowerCase());
+    if (isDuplicate) {
+      alert(`テーブル名「${name}」は既に存在します。別の名前を指定してください。`);
+      setTimeout(() => element.focus(), 0);
+      return false;
     }
-    handleUpdateProject({
-      tables: project.tables.map(t => t.id === id ? { ...t, ...updates } : t)
+    return true;
+  }, [project.tables]);
+
+  const deleteTable = useCallback((id: string) => {
+    setProject(currentProject => {
+      const newTables = currentProject.tables.filter(t => t.id !== id);
+      const newRelations = currentProject.relations.filter(r => r.sourceTableId !== id && r.targetTableId !== id);
+      const updated = { ...currentProject, tables: newTables, relations: newRelations, updatedAt: Date.now() };
+
+      setProjects(prevProjects => {
+        const index = prevProjects.findIndex(p => p.id === updated.id);
+        if (index === -1) return [...prevProjects, updated];
+        const newProjects = [...prevProjects];
+        newProjects[index] = updated;
+        return newProjects;
+      });
+
+      setSelectedTableId(prevSelected => prevSelected === id ? null : prevSelected);
+      return updated;
     });
-  };
+    setConfirmTableDeleteId(null);
+    setShowTableDeleteConfirmModal(false);
+  }, []);
 
-  const deleteTable = (id: string) => {
-    handleUpdateProject({
-      tables: project.tables.filter(t => t.id !== id),
-      relations: project.relations.filter(r => r.sourceTableId !== id && r.targetTableId !== id)
+  const copyTable = useCallback((id: string) => {
+    setProject(currentProject => {
+      const targetIndex = currentProject.tables.findIndex(t => t.id === id);
+      if (targetIndex === -1) return currentProject;
+      const target = currentProject.tables[targetIndex];
+
+      const newId = crypto.randomUUID();
+      const newTable: Table = {
+        ...target,
+        id: newId,
+        name: `${target.name}_copy`,
+        fields: target.fields.map(f => ({ ...f, id: crypto.randomUUID() })),
+        position: { x: target.position.x + 30, y: target.position.y + 30 }
+      };
+
+      const newTables = [...currentProject.tables];
+      newTables.splice(targetIndex + 1, 0, newTable);
+      const updated = { ...currentProject, tables: newTables, updatedAt: Date.now() };
+
+      setProjects(prevProjects => {
+        const index = prevProjects.findIndex(p => p.id === updated.id);
+        if (index === -1) return [...prevProjects, updated];
+        const newProjects = [...prevProjects];
+        newProjects[index] = updated;
+        return newProjects;
+      });
+
+      setSelectedTableId(newId);
+      return updated;
     });
-    if (selectedTableId === id) setSelectedTableId(null);
-  };
+  }, []);
 
-  const addField = (tableId: string) => {
-    const table = project.tables.find(t => t.id === tableId);
-    if (!table) return;
-    let defaultName = `カラム_${table.fields.length + 1}`;
-    
-    // Auto-increment default name to avoid immediate validation failure
-    let counter = table.fields.length + 1;
-    while (table.fields.some(f => f.name.toLowerCase() === defaultName.toLowerCase())) {
-      counter++;
-      defaultName = `カラム_${counter}`;
-    }
-
-    const newField: Field = {
-      id: crypto.randomUUID(),
-      name: defaultName,
-      type: 'VARCHAR',
-      length: '255',
-      isNullable: true,
-      isPrimaryKey: false,
-      isForeignKey: false,
-      notes: ''
-    };
-    updateTable(tableId, { fields: [...table.fields, newField] });
-  };
-
-  const updateField = (tableId: string, fieldId: string, updates: Partial<Field>) => {
-    const table = project.tables.find(t => t.id === tableId);
-    if (!table) return;
-
-    if (updates.hasOwnProperty('name') && updates.name) {
-      const isDuplicate = table.fields.some(f => f.id !== fieldId && f.name.toLowerCase() === updates.name!.toLowerCase());
-      if (isDuplicate) {
-        alert(`フィールド名「${updates.name}」は既に同じテーブル内に存在します。`);
-        return;
+  const addField = useCallback((tableId: string) => {
+    setProject(currentProject => {
+      const table = currentProject.tables.find(t => t.id === tableId);
+      if (!table) return currentProject;
+      let defaultName = `カラム_${table.fields.length + 1}`;
+      
+      // Auto-increment default name to avoid immediate validation failure
+      let counter = table.fields.length + 1;
+      while (table.fields.some(f => f.name.toLowerCase() === defaultName.toLowerCase())) {
+        counter++;
+        defaultName = `カラム_${counter}`;
       }
-    }
 
-    updateTable(tableId, {
-      fields: table.fields.map(f => f.id === fieldId ? { ...f, ...updates } : f)
+      const newField: Field = {
+        id: crypto.randomUUID(),
+        name: defaultName,
+        type: 'VARCHAR',
+        length: '255',
+        isNullable: true,
+        isPrimaryKey: false,
+        isForeignKey: false,
+        notes: ''
+      };
+      
+      const newTables = currentProject.tables.map(t => 
+        t.id === tableId ? { ...t, fields: [...t.fields, newField] } : t
+      );
+      const updated = { ...currentProject, tables: newTables, updatedAt: Date.now() };
+
+      setProjects(prevProjects => {
+        const index = prevProjects.findIndex(p => p.id === updated.id);
+        if (index === -1) return [...prevProjects, updated];
+        const newProjects = [...prevProjects];
+        newProjects[index] = updated;
+        return newProjects;
+      });
+
+      return updated;
     });
-  };
+  }, []);
 
-  const deleteField = (tableId: string, fieldId: string) => {
+  const updateField = useCallback((tableId: string, fieldId: string, updates: Partial<Field>) => {
+    setProject(currentProject => {
+      const table = currentProject.tables.find(t => t.id === tableId);
+      if (!table) return currentProject;
+
+      const newTables = currentProject.tables.map(t => 
+        t.id === tableId ? { 
+          ...t, 
+          fields: t.fields.map(f => f.id === fieldId ? { ...f, ...updates } : f) 
+        } : t
+      );
+      const updated = { ...currentProject, tables: newTables, updatedAt: Date.now() };
+      return updated;
+    });
+  }, []);
+
+  const validateFieldName = useCallback((tableId: string, fieldId: string, name: string, element: HTMLInputElement) => {
+    if (!name) return true;
     const table = project.tables.find(t => t.id === tableId);
-    if (!table) return;
-    updateTable(tableId, {
-      fields: table.fields.filter(f => f.id !== fieldId)
-    });
-  };
+    if (!table) return true;
+    const isDuplicate = table.fields.some(f => f.id !== fieldId && f.name.toLowerCase() === name.trim().toLowerCase());
+    if (isDuplicate) {
+      alert(`フィールド名「${name}」は既に同じテーブル内に存在します。`);
+      setTimeout(() => element.focus(), 0);
+      return false;
+    }
+    return true;
+  }, [project.tables]);
 
-  const onDragEnd = (result: DropResult) => {
+  const deleteField = useCallback((tableId: string, fieldId: string) => {
+    setProject(currentProject => {
+      const table = currentProject.tables.find(t => t.id === tableId);
+      if (!table) return currentProject;
+
+      const newTables = currentProject.tables.map(t => 
+        t.id === tableId ? { 
+          ...t, 
+          fields: t.fields.filter(f => f.id !== fieldId) 
+        } : t
+      );
+      const updated = { ...currentProject, tables: newTables, updatedAt: Date.now() };
+
+      setProjects(prevProjects => {
+        const index = prevProjects.findIndex(p => p.id === updated.id);
+        if (index === -1) return [...prevProjects, updated];
+        const newProjects = [...prevProjects];
+        newProjects[index] = updated;
+        return newProjects;
+      });
+
+      return updated;
+    });
+  }, []);
+
+  const onDragEnd = useCallback((result: DropResult) => {
     if (!result.destination) return;
     if (result.source.index === result.destination.index) return;
 
-    if (result.type === 'table') {
-      const newTables = Array.from(project.tables);
-      const [reorderedTable] = newTables.splice(result.source.index, 1);
-      newTables.splice(result.destination.index, 0, reorderedTable);
-      handleUpdateProject({ tables: newTables });
-    } else if (result.type === 'field') {
-      const tableId = result.source.droppableId.replace('fields-', '');
-      const table = project.tables.find(t => t.id === tableId);
-      if (!table) return;
+    setProject(currentProject => {
+      let newTables = [...currentProject.tables];
 
-      const newFields = Array.from(table.fields);
-      const [reorderedField] = newFields.splice(result.source.index, 1);
-      newFields.splice(result.destination.index, 0, reorderedField);
+      if (result.type === 'table') {
+        const [reorderedTable] = newTables.splice(result.source.index, 1);
+        newTables.splice(result.destination.index, 0, reorderedTable);
+      } else if (result.type === 'field') {
+        const tableId = result.source.droppableId.replace('fields-', '');
+        newTables = newTables.map(t => {
+          if (t.id === tableId) {
+            const newFields = [...t.fields];
+            const [reorderedField] = newFields.splice(result.source.index, 1);
+            newFields.splice(result.destination.index, 0, reorderedField);
+            return { ...t, fields: newFields };
+          }
+          return t;
+        });
+      }
 
-      updateTable(tableId, { fields: newFields });
-    }
-  };
+      const updated = { ...currentProject, tables: newTables, updatedAt: Date.now() };
+      
+      setProjects(prevProjects => {
+        const index = prevProjects.findIndex(p => p.id === updated.id);
+        if (index === -1) return [...prevProjects, updated];
+        const newProjects = [...prevProjects];
+        newProjects[index] = updated;
+        return newProjects;
+      });
+
+      return updated;
+    });
+  }, []);
+
+  if (!mounted) {
+    return <div className="h-screen bg-[#0F172A] flex items-center justify-center">
+      <div className="w-10 h-10 border-4 border-sky-500 border-t-transparent rounded-full animate-spin" />
+    </div>;
+  }
 
   const handleAutoLayout = async () => {
     if (project.tables.length === 0) return;
@@ -963,34 +1113,19 @@ export default function Home() {
                               ref={provided.innerRef}
                             >
                               {project.tables.map((table, index) => (
-                                <Draggable key={table.id} draggableId={table.id} index={index}>
-                                  {(provided, snapshot) => (
-                                    <li
-                                      ref={provided.innerRef}
-                                      {...provided.draggableProps}
-                                      onClick={() => setSelectedTableId(table.id)}
-                                      className={`px-3 py-2 text-xs flex items-center justify-between rounded group ${selectedTableId === table.id ? 'bg-sky-500/10 text-sky-100' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'} ${snapshot.isDragging ? 'shadow-lg bg-slate-800 ring-1 ring-sky-500' : ''}`}
-                                    >
-                                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                                        <div {...provided.dragHandleProps} className="cursor-grab hover:text-sky-400 opacity-50 hover:opacity-100 text-slate-500 -ml-1 py-1">
-                                          <GripVertical size={12} />
-                                        </div>
-                                        <TableIcon size={12} className={selectedTableId === table.id ? 'text-sky-400' : 'text-slate-600'} />
-                                        <input 
-                                          value={table.name || ""}
-                                          onChange={(e) => updateTable(table.id, { name: e.target.value })}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="bg-transparent border-none focus:ring-0 p-0 text-xs font-medium w-full text-current focus:text-white"
-                                        />
-                                      </div>
-                                      <Trash2 
-                                        size={12} 
-                                        className="opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all cursor-pointer" 
-                                        onClick={(e) => { e.stopPropagation(); deleteTable(table.id); }}
-                                      />
-                                    </li>
-                                  )}
-                                </Draggable>
+                                <TableListItem 
+                                  key={table.id}
+                                  table={table}
+                                  index={index}
+                                  isSelected={selectedTableId === table.id}
+                                  onSelect={setSelectedTableId}
+                                  onUpdate={updateTable}
+                                  onCopy={copyTable}
+                                  onDeleteRequest={(id) => {
+                                    setConfirmTableDeleteId(id);
+                                    setShowTableDeleteConfirmModal(true);
+                                  }}
+                                />
                               ))}
                               {provided.placeholder}
                             </ul>
@@ -1459,21 +1594,23 @@ export default function Home() {
                   exit={{ opacity: 0 }}
                   className="w-full h-full"
                 >
-                  <Diagram 
-                    tables={project.tables}
-                    relations={project.relations}
-                    onNodesChange={handleNodesChange}
-                    onEdgesChange={() => {}}
-                    onConnect={onConnect}
-                    onAddTable={addTable}
-                    onAutoLayout={handleAutoLayout}
-                    onUpdateTable={updateTable}
-                    onAddField={addField}
-                    onUpdateField={updateField}
-                    onSelectTable={setSelectedTableId}
-                    selectedTableId={selectedTableId}
-                    searchTriggerId={searchTriggerId}
-                  />
+                    <Diagram 
+                      tables={project.tables}
+                      relations={project.relations}
+                      onNodesChange={handleNodesChange}
+                      onEdgesChange={() => {}}
+                      onConnect={onConnect}
+                      onAddTable={addTable}
+                      onAutoLayout={handleAutoLayout}
+                      onUpdateTable={updateTable}
+                      onAddField={addField}
+                      onUpdateField={updateField}
+                      onValidateTableName={validateTableName}
+                      onValidateFieldName={validateFieldName}
+                      onSelectTable={setSelectedTableId}
+                      selectedTableId={selectedTableId}
+                      searchTriggerId={searchTriggerId}
+                    />
                 </motion.div>
               )}
 
@@ -1492,175 +1629,26 @@ export default function Home() {
                       </div>
                     ) : (
                       project.tables.map(table => (
-                        <div 
-                          key={table.id} 
-                          id={`table-card-${table.id}`} 
-                          onClick={() => setSelectedTableId(table.id)}
-                          className={`bg-slate-900/50 rounded border transition-all overflow-hidden shadow-lg scroll-mt-20 cursor-pointer group/card ${selectedTableId === table.id ? 'border-sky-500 ring-1 ring-sky-500/50 scale-[1.01] shadow-sky-500/10' : 'border-slate-800 hover:border-slate-700'}`}
-                        >
-                          <div className={`px-4 py-2 border-b flex items-center justify-between transition-colors ${selectedTableId === table.id ? 'bg-sky-500/20 border-sky-500/30' : 'bg-slate-800 border-slate-700'}`}>
-                            <div className="flex items-center gap-3">
-                              <TableIcon size={16} className={selectedTableId === table.id ? 'text-sky-300' : 'text-sky-400'} />
-                              <input 
-                                value={table.name || ""}
-                                onChange={(e) => updateTable(table.id, { name: e.target.value })}
-                                className="font-bold text-sm bg-transparent border-none focus:ring-0 p-0 text-slate-200 tracking-tight"
-                              />
-                            </div>
-                            <button onClick={(e) => { e.stopPropagation(); deleteTable(table.id); }} className="text-slate-500 hover:text-red-400 transition-colors">
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                          
-                          <div className="p-3 border-b border-slate-800/50 bg-[#111827]/30">
-                             <input 
-                                value={table.description || ""}
-                                onChange={(e) => updateTable(table.id, { description: e.target.value })}
-                                placeholder="テーブル概要を追加..."
-                                className="w-full text-[11px] text-slate-500 bg-transparent border-none focus:ring-0 p-0 italic truncate"
-                              />
-                          </div>
-
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-[11px]">
-                              <thead>
-                                <tr className="bg-slate-900 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-800">
-                                  <th className="px-4 py-2 text-center w-8"></th>
-                                  <th className="px-4 py-2 text-left w-10 text-center">PK</th>
-                                  <th className="px-4 py-2 text-left">内部名</th>
-                                  <th className="px-4 py-2 text-left">データ型</th>
-                                  <th className="px-4 py-2 text-left w-20">長さ</th>
-                                  <th className="px-4 py-2 text-center w-10">NULL</th>
-                                  <th className="px-4 py-2 text-left">備考</th>
-                                  <th className="px-4 py-2 text-center w-8"></th>
-                                </tr>
-                              </thead>
-                              <DragDropContext onDragEnd={onDragEnd}>
-                                <Droppable droppableId={`fields-${table.id}`} type="field">
-                                  {(provided) => (
-                                    <tbody {...provided.droppableProps} ref={provided.innerRef}>
-                                      {table.fields.map((field, index) => (
-                                        <Draggable key={field.id} draggableId={field.id} index={index}>
-                                          {(provided, snapshot) => (
-                                            <tr 
-                                              ref={provided.innerRef}
-                                              {...provided.draggableProps}
-                                              className={`border-b border-slate-800/30 group transition-colors ${snapshot.isDragging ? 'bg-sky-900/40 shadow-lg relative z-10' : 'hover:bg-slate-800/20'}`}
-                                            >
-                                              <td className="px-2 py-1.5 text-center text-slate-600">
-                                                <div {...provided.dragHandleProps} className="cursor-grab hover:text-sky-400 opacity-50 hover:opacity-100 flex items-center justify-center">
-                                                  <GripVertical size={12} />
-                                                </div>
-                                              </td>
-                                              <td className="px-4 py-1.5 text-center">
-                                                <input 
-                                                  type="checkbox" 
-                                                  checked={field.isPrimaryKey} 
-                                                  onChange={(e) => updateField(table.id, field.id, { isPrimaryKey: e.target.checked })}
-                                                  className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500 cursor-pointer"
-                                                />
-                                              </td>
-                                              <td className="px-4 py-1.5">
-                                                <input 
-                                                  value={field.name || ""}
-                                                  onChange={(e) => updateField(table.id, field.id, { name: e.target.value })}
-                                                  className="w-full bg-transparent border-none focus:ring-0 p-0 font-mono text-sky-300 outline-none"
-                                                />
-                                              </td>
-                                              <td className="px-4 py-1.5">
-                                                {project.environmentId ? (
-                                                  (() => {
-                                                    const env = settings.dbEnvironments.find(env => env.id === project.environmentId);
-                                                    const typeExists = env?.defaultTypes.some(t => t.name === field.type);
-                                                    return (
-                                                      <select 
-                                                        value={field.type || ""}
-                                                        onChange={(e) => {
-                                                          const typeName = e.target.value;
-                                                          const typeDef = env?.defaultTypes.find(t => t.name === typeName);
-                                                          updateField(table.id, field.id, { 
-                                                            type: typeName,
-                                                            length: typeDef?.defaultLength || field.length
-                                                          });
-                                                        }}
-                                                        className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-300 cursor-pointer outline-none"
-                                                      >
-                                                        <option value="" disabled className="bg-slate-900">型を選択...</option>
-                                                        {field.type && !typeExists && (
-                                                          <option value={field.type} className="bg-slate-900">{field.type}</option>
-                                                        )}
-                                                        {env?.defaultTypes.map(t => (
-                                                          <option key={t.name} value={t.name} className="bg-slate-900">{t.name}</option>
-                                                        ))}
-                                                      </select>
-                                                    );
-                                                  })()
-                                                ) : (
-                                                  <input 
-                                                    value={field.type || ""}
-                                                    onChange={(e) => updateField(table.id, field.id, { type: e.target.value })}
-                                                    className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-300 outline-none"
-                                                  />
-                                                )}
-                                              </td>
-                                              <td className="px-4 py-1.5">
-                                                <input 
-                                                  value={field.length || ""}
-                                                  onChange={(e) => updateField(table.id, field.id, { length: e.target.value })}
-                                                  className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-500 outline-none"
-                                                />
-                                              </td>
-                                              <td className="px-4 py-1.5 text-center">
-                                                <input 
-                                                  type="checkbox" 
-                                                  checked={field.isNullable} 
-                                                  onChange={(e) => updateField(table.id, field.id, { isNullable: e.target.checked })}
-                                                  className="rounded border-slate-700 bg-slate-900 text-sky-500 cursor-pointer"
-                                                />
-                                              </td>
-                                              <td className="px-4 py-1.5">
-                                                <input 
-                                                  value={field.notes || ""}
-                                                  onChange={(e) => updateField(table.id, field.id, { notes: e.target.value })}
-                                                  placeholder="備考を入力..."
-                                                  className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-500 italic outline-none"
-                                                />
-                                              </td>
-                                              <td className="px-4 py-1.5 text-center">
-                                                <button 
-                                                  onClick={() => deleteField(table.id, field.id)}
-                                                  className="text-slate-600 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all cursor-pointer"
-                                                >
-                                                  <X size={12} />
-                                                </button>
-                                              </td>
-                                            </tr>
-                                          )}
-                                        </Draggable>
-                                      ))}
-                                      {provided.placeholder}
-                                    </tbody>
-                                  )}
-                                </Droppable>
-                              </DragDropContext>
-                            </table>
-                          </div>
-                          
-                          <div className="p-2 bg-slate-900/80 border-t border-slate-800 flex items-center justify-between">
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); addField(table.id); }}
-                              className="flex items-center gap-2 text-[10px] font-bold text-slate-500 hover:text-sky-400 transition-colors uppercase tracking-widest px-2"
-                            >
-                              <Plus size={12} /> カラムを追加
-                            </button>
-                            {project.relations.filter(r => r.sourceTableId === table.id).length > 0 && (
-                                <div className="flex items-center gap-1.5 px-3">
-                                   <Workflow size={10} className="text-sky-500" />
-                                   <span className="text-[9px] text-sky-400 font-bold uppercase">{project.relations.filter(r => r.sourceTableId === table.id).length} リレーション中</span>
-                                </div>
-                            )}
-                          </div>
-                        </div>
+                        <TableCard 
+                          key={table.id}
+                          table={table}
+                          isSelected={selectedTableId === table.id}
+                          environmentId={project.environmentId}
+                          dbEnvironments={settings.dbEnvironments}
+                          onSelect={setSelectedTableId}
+                          onUpdateTable={updateTable}
+                          onValidateTableName={validateTableName}
+                          onCopyTable={copyTable}
+                          onDeleteTableRequest={(id) => {
+                            setConfirmTableDeleteId(id);
+                            setShowTableDeleteConfirmModal(true);
+                          }}
+                          onAddField={addField}
+                          onUpdateField={updateField}
+                          onValidateFieldName={validateFieldName}
+                          onDeleteField={deleteField}
+                          onDragEnd={onDragEnd}
+                        />
                       ))
                     )}
                   </div>
@@ -2109,6 +2097,68 @@ export default function Home() {
                 </button>
                 <button 
                   onClick={() => deleteProject(confirmDeleteId)}
+                  className="px-6 py-2 bg-red-600 text-white font-black text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-500 transition-all shadow-lg shadow-red-500/10"
+                >
+                  はい、削除します
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Table Delete Confirmation Modal */}
+      <AnimatePresence>
+        {showTableDeleteConfirmModal && confirmTableDeleteId && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[60] flex items-center justify-center p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-[#1E293B] border border-slate-700 w-full max-w-md rounded-xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-700 flex items-center justify-between bg-slate-800/30">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Trash2 size={20} className="text-red-500" /> テーブル削除の確認
+                </h3>
+                <button 
+                  onClick={() => setShowTableDeleteConfirmModal(false)}
+                  className="p-1 hover:bg-slate-700 rounded text-slate-500 hover:text-white transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="p-8 text-center bg-[#0F172A]/50">
+                <p className="text-slate-300 text-sm leading-relaxed mb-2">
+                  <span className="text-red-400 font-bold block mb-1">
+                    「{project.tables.find(t => t.id === confirmTableDeleteId)?.name}」
+                  </span>
+                  を本当に削除してよろしいですか？
+                </p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+                  テーブル内の全フィールドと関連するリレーションも削除されます
+                </p>
+              </div>
+
+              <div className="p-6 border-t border-slate-700 bg-slate-800/30 flex justify-end gap-3">
+                <button 
+                  onClick={() => setShowTableDeleteConfirmModal(false)}
+                  className="px-5 py-2 text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:text-white transition-all"
+                >
+                  キャンセル
+                </button>
+                <button 
+                  onClick={() => {
+                    if (confirmTableDeleteId) {
+                      deleteTable(confirmTableDeleteId);
+                    }
+                  }}
                   className="px-6 py-2 bg-red-600 text-white font-black text-[10px] uppercase tracking-widest rounded-lg hover:bg-red-500 transition-all shadow-lg shadow-red-500/10"
                 >
                   はい、削除します

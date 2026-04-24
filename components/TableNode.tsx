@@ -10,12 +10,23 @@ export type TableNodeProps = Node<{
   onUpdateTable: (id: string, updates: Partial<Table>) => void;
   onAddField: (tableId: string) => void;
   onUpdateField: (tableId: string, fieldId: string, updates: Partial<Field>) => void;
+  onValidateTableName: (id: string, name: string, element: HTMLInputElement) => boolean;
+  onValidateFieldName: (tableId: string, fieldId: string, name: string, element: HTMLInputElement) => boolean;
   viewMode?: 'all' | 'summary';
   relatedFieldIds?: Set<string>;
 }>;
 
 export const TableNode = memo(({ data, selected }: NodeProps<TableNodeProps>) => {
-  const { table, onUpdateTable, onAddField, onUpdateField, viewMode = 'all', relatedFieldIds } = data;
+  const { 
+    table, 
+    onUpdateTable, 
+    onAddField, 
+    onUpdateField, 
+    onValidateTableName, 
+    onValidateFieldName, 
+    viewMode = 'all', 
+    relatedFieldIds 
+  } = data;
 
   const visibleFields = viewMode === 'summary'
     ? table.fields.filter(f => f.isPrimaryKey || relatedFieldIds?.has(f.id))
@@ -29,6 +40,7 @@ export const TableNode = memo(({ data, selected }: NodeProps<TableNodeProps>) =>
           <input 
             value={table.name || ""}
             onChange={(e) => onUpdateTable(table.id, { name: e.target.value })}
+            onBlur={(e) => onValidateTableName(table.id, e.target.value, e.target)}
             className="bg-transparent border-none focus:ring-0 p-0 w-full tracking-tight nodrag font-bold"
           />
         </div>
@@ -68,6 +80,7 @@ export const TableNode = memo(({ data, selected }: NodeProps<TableNodeProps>) =>
                   <input 
                     value={field.name || ""}
                     onChange={(e) => onUpdateField(table.id, field.id, { name: e.target.value })}
+                    onBlur={(e) => onValidateFieldName(table.id, field.id, e.target.value, e.target)}
                     className="bg-transparent border-none focus:ring-0 p-0 w-full text-sky-300 group-hover:text-sky-200 nodrag"
                   />
                   {field.notes && (
