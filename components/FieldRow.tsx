@@ -71,7 +71,11 @@ export const FieldRow = memo(({
         <tr 
           ref={provided.innerRef}
           {...provided.draggableProps}
-          className={`border-b border-slate-800/30 group transition-colors ${snapshot.isDragging ? 'bg-sky-900/40 shadow-lg relative z-10' : 'hover:bg-slate-800/20'}`}
+          className={`border-b border-slate-800/30 group ${snapshot.isDragging ? 'bg-sky-900/40 shadow-lg relative z-50 display-table' : 'hover:bg-slate-800/20 transition-colors'}`}
+          style={{
+            ...provided.draggableProps.style,
+            display: snapshot.isDragging ? 'table' : undefined,
+          }}
         >
           <td className="px-2 py-1.5 text-center text-slate-600">
             <div {...provided.dragHandleProps} className="cursor-grab hover:text-sky-400 opacity-50 hover:opacity-100 flex items-center justify-center">

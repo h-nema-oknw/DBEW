@@ -76,7 +76,7 @@ export const TableCard = memo(({
     <div 
       id={`table-card-${table.id}`} 
       onClick={() => onSelect(table.id)}
-      className={`bg-slate-900/50 rounded border transition-all overflow-hidden shadow-lg scroll-mt-20 cursor-pointer group/card ${isSelected ? 'border-sky-500 ring-1 ring-sky-500/50 scale-[1.01] shadow-sky-500/10' : 'border-slate-800 hover:border-slate-700'}`}
+      className={`bg-slate-900/50 rounded border transition-all overflow-hidden shadow-lg scroll-mt-20 cursor-pointer group/card ${isSelected ? 'border-sky-500 ring-1 ring-sky-500/50 shadow-sky-500/10' : 'border-slate-800 hover:border-slate-700'}`}
     >
       <div className={`px-4 py-2 border-b flex items-center justify-between transition-colors ${isSelected ? 'bg-sky-500/20 border-sky-500/30' : 'bg-slate-800 border-slate-700'}`}>
         <div className="flex items-center gap-3">

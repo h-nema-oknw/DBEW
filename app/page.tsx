@@ -1653,9 +1653,9 @@ export default function Home() {
 
               {activeTab === 'specification' && (
                 <motion.div 
-                  initial={{ opacity: 0, scale: 0.98 }} 
-                  animate={{ opacity: 1, scale: 1 }} 
-                  exit={{ opacity: 0, scale: 0.98 }}
+                  initial={{ opacity: 0 }} 
+                  animate={{ opacity: 1 }} 
+                  exit={{ opacity: 0 }}
                   className="p-8 h-full overflow-y-auto bg-[#0a0f1c]"
                 >
                   <div className="max-w-5xl mx-auto space-y-8">
