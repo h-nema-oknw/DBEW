@@ -275,6 +275,58 @@ export default function Home() {
   const [currentSearchIndex, setCurrentSearchIndex] = useState(0);
   const [searchTriggerId, setSearchTriggerId] = useState<string | null>(null);
 
+  const isAutoScrolling = useRef(false);
+  const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  const handleSidebarTableSelect = useCallback((id: string) => {
+    setSelectedTableId(id);
+    if (activeTab === 'specification') {
+      isAutoScrolling.current = true;
+      const el = document.getElementById(`table-card-${id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Give time for smooth scroll to finish
+        setTimeout(() => {
+          isAutoScrolling.current = false;
+        }, 800);
+      } else {
+        isAutoScrolling.current = false;
+      }
+    }
+  }, [activeTab]);
+
+  const handleGridScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (isAutoScrolling.current) return;
+    
+    if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+    
+    const target = e.currentTarget;
+    scrollTimeout.current = setTimeout(() => {
+      const containerRect = target.getBoundingClientRect();
+      const cards = target.querySelectorAll('[id^="table-card-"]');
+      
+      let topCardId = null;
+      let minDistance = Infinity;
+
+      cards.forEach(card => {
+        const rect = card.getBoundingClientRect();
+        const cardTopRelativeToContainer = rect.top - containerRect.top;
+        // Check if card is visible near the top
+        if (cardTopRelativeToContainer > -rect.height && cardTopRelativeToContainer < containerRect.height / 2) {
+            const distance = Math.abs(cardTopRelativeToContainer);
+            if (distance < minDistance) {
+                minDistance = distance;
+                topCardId = card.id.replace('table-card-', '');
+            }
+        }
+      });
+
+      if (topCardId && topCardId !== selectedTableId) {
+        setSelectedTableId(topCardId);
+      }
+    }, 100);
+  }, [selectedTableId]);
+
   const getSearchResults = useCallback((query: string, tables: Table[]) => {
     if (!query) return [];
     const q = query.toLowerCase();
@@ -1155,7 +1207,7 @@ export default function Home() {
                                   table={table}
                                   index={index}
                                   isSelected={selectedTableId === table.id}
-                                  onSelect={setSelectedTableId}
+                                  onSelect={handleSidebarTableSelect}
                                   onUpdate={updateTable}
                                   onCopy={copyTable}
                                   onDeleteRequest={(id) => {
@@ -1657,6 +1709,7 @@ export default function Home() {
                   animate={{ opacity: 1 }} 
                   exit={{ opacity: 0 }}
                   className="p-8 h-full overflow-y-auto bg-[#0a0f1c]"
+                  onScroll={handleGridScroll}
                 >
                   <div className="max-w-5xl mx-auto space-y-8">
                     {project.tables.length === 0 ? (
