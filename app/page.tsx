@@ -2062,6 +2062,30 @@ export default function Home() {
                     >
                       <FileText size={18} /> 仕様テキストを直接貼り付ける
                     </button>
+                    
+                    <div className="flex items-center gap-4 mt-2">
+                       <p className="text-xs text-slate-500 font-medium">テンプレート:</p>
+                       <button
+                         onClick={() => {
+                           const csv = 'Table, Description, Field, Type, Length, PK, Nullable, FK, Notes\nusers, User table, id, INT, 11, true, false, false, Primary Key\nusers, User table, name, VARCHAR, 255, false, true, false, User Name';
+                           const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                           saveAs(blob, 'template.csv');
+                         }}
+                         className="px-3 py-1 bg-slate-800 text-slate-300 hover:bg-slate-700 rounded text-xs transition-colors flex items-center gap-1"
+                       >
+                         <Download size={14}/> CSV
+                       </button>
+                       <button
+                         onClick={() => {
+                           const json = '[\n  {\n    "name": "users",\n    "description": "User table",\n    "fields": [\n      {\n        "name": "id",\n        "type": "INT",\n        "length": "11",\n        "isPrimaryKey": true,\n        "isNullable": false,\n        "isForeignKey": false,\n        "notes": "Primary Key"\n      }\n    ]\n  }\n]';
+                           const blob = new Blob([json], { type: 'application/json' });
+                           saveAs(blob, 'template.json');
+                         }}
+                         className="px-3 py-1 bg-slate-800 text-slate-300 hover:bg-slate-700 rounded text-xs transition-colors flex items-center gap-1"
+                       >
+                         <Download size={14}/> JSON
+                       </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="flex-1 flex flex-col gap-4 overflow-hidden">
