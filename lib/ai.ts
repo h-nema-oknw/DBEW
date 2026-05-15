@@ -60,13 +60,15 @@ export async function analyzeMarkdown(markdown: string, apiKey?: string): Promis
 }
 
 export function generateMarkdown(project: Project): string {
-  let md = `# データベース仕様書: ${project.name}\n\n`;
-  md += `**データベース名:** ${project.dbName}\n`;
-  md += `**説明:** ${project.description}\n`;
-  md += `**DB種別:** ${project.dbType}\n`;
-  md += `**言語/環境:** ${project.language}\n\n`;
-  md += `## 設計コンテキスト\n${project.context}\n\n`;
-  md += `## 制約事項\n${project.constraints}\n\n`;
+  const e = (text?: string) => text ? text.replace(/_/g, '\\_') : '';
+
+  let md = `# データベース仕様書: ${e(project.name)}\n\n`;
+  md += `**データベース名:** ${e(project.dbName)}\n`;
+  md += `**説明:** ${e(project.description)}\n`;
+  md += `**DB種別:** ${e(project.dbType)}\n`;
+  md += `**言語/環境:** ${e(project.language)}\n\n`;
+  md += `## 設計コンテキスト\n${e(project.context)}\n\n`;
+  md += `## 制約事項\n${e(project.constraints)}\n\n`;
   
   md += `## ER図 (Mermaid)\n\n\`\`\`mermaid\nerDiagram\n`;
   project.relations.forEach(rel => {
@@ -82,12 +84,12 @@ export function generateMarkdown(project: Project): string {
 
   md += `## テーブル定義\n\n`;
   project.tables.forEach(table => {
-    md += `### ${table.name}\n`;
-    md += `${table.description}\n\n`;
+    md += `### ${e(table.name)}\n`;
+    md += `${e(table.description)}\n\n`;
     md += `| フィールド名 | データ型 | 長さ/精度 | PK | FK | NULL許可 | 備考 |\n`;
     md += `|--------------|----------|-----------|----|----|----------|------|\n`;
     table.fields.forEach(f => {
-      md += `| ${f.name} | ${f.type} | ${f.length} | ${f.isPrimaryKey ? 'Yes' : ''} | ${f.isForeignKey ? 'Yes' : ''} | ${f.isNullable ? 'Yes' : 'No'} | ${f.notes} |\n`;
+      md += `| ${e(f.name)} | ${e(f.type)} | ${e(f.length)} | ${f.isPrimaryKey ? 'Yes' : ''} | ${f.isForeignKey ? 'Yes' : ''} | ${f.isNullable ? 'Yes' : 'No'} | ${e(f.notes)} |\n`;
     });
     md += `\n`;
   });

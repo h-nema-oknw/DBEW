@@ -260,8 +260,9 @@ export default function Home() {
   const [newRelTargetTableId, setNewRelTargetTableId] = useState<string>('');
   const [newRelTargetFieldId, setNewRelTargetFieldId] = useState<string>('');
   const [importText, setImportText] = useState('');
-  const [importMode, setImportMode] = useState<'replace' | 'append'>('replace');
+  const [importMode, setImportMode] = useState<'replace' | 'append'>('append');
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showTableDeleteConfirmModal, setShowTableDeleteConfirmModal] = useState(false);
@@ -915,8 +916,19 @@ export default function Home() {
   };
 
   const handleAIImport = async () => {
-    if (!importText) return;
+    if (!importText || !importText.trim()) return;
+
+    if (importMode === 'replace' && project.tables.length > 0) {
+      setShowOverwriteConfirm(true);
+      return;
+    }
+
+    executeAIImport();
+  };
+
+  const executeAIImport = async () => {
     setIsAIAnalyzing(true);
+    setShowOverwriteConfirm(false);
     try {
       const analyzed = await analyzeMarkdown(importText, settings.geminiApiKey);
       
@@ -999,7 +1011,7 @@ export default function Home() {
       
       setShowImportModal(false);
       setImportText('');
-      setImportMode('replace'); // Reset to default
+      setImportMode('append'); // Reset to default
     } catch (e) {
       alert('AI解析に失敗しました。Markdownの形式を確認してください。');
     } finally {
@@ -1031,7 +1043,10 @@ export default function Home() {
         
         <div className="flex items-center gap-3">
           <button 
-            onClick={() => setShowImportModal(true)}
+            onClick={() => {
+              setImportMode('append');
+              setShowImportModal(true);
+            }}
             className="px-4 py-1.5 text-xs font-medium bg-slate-800 border border-slate-600 rounded hover:bg-slate-700 text-slate-200 transition-colors"
           >
             .MDをインポート
@@ -2231,6 +2246,64 @@ export default function Home() {
                 </p>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Overwrite Confirmation Modal */}
+      <AnimatePresence>
+        {showOverwriteConfirm && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[70] flex items-center justify-center p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-[#1E293B] border border-slate-700 w-full max-w-md rounded-xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-700 flex items-center justify-between bg-slate-800/30">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Info size={20} className="text-amber-500" /> 上書きインポートの確認
+                </h3>
+                <button 
+                  onClick={() => setShowOverwriteConfirm(false)}
+                  className="p-1 hover:bg-slate-700 rounded text-slate-500 hover:text-white transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="p-8 text-center bg-[#0F172A]/50">
+                <p className="text-slate-300 text-sm leading-relaxed mb-2">
+                  上書きモードを選択しています。
+                </p>
+                <p className="text-amber-400 font-bold text-sm mb-4">
+                  既存のすべてのテーブルと関係が削除され、新しいデータで置き換えられます。本当に続行しますか？
+                </p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+                  現在のプロジェクト内容は失われます
+                </p>
+              </div>
+
+              <div className="p-6 border-t border-slate-700 bg-slate-800/30 flex justify-end gap-3">
+                <button 
+                  onClick={() => setShowOverwriteConfirm(false)}
+                  className="px-5 py-2 text-slate-400 font-bold text-[10px] uppercase tracking-widest hover:text-white transition-all"
+                >
+                  キャンセル
+                </button>
+                <button 
+                  onClick={executeAIImport}
+                  className="px-6 py-2 bg-amber-600 text-white font-black text-[10px] uppercase tracking-widest rounded-lg hover:bg-amber-500 transition-all shadow-lg shadow-amber-500/10"
+                >
+                  はい、上書きします
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
