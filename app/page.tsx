@@ -80,7 +80,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import Diagram from '@/components/Diagram';
 import { Project, Table, Field, Relation, DBType, AppSettings, DBTypeOption, DBEnvironment } from '@/lib/types';
-import { generateMarkdown, analyzeMarkdown, layoutTables } from '@/lib/ai';
+import { generateMarkdown, analyzeMarkdown, layoutTables, parseStructuredData } from '@/lib/ai';
 import { saveAs } from 'file-saver';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -402,8 +402,9 @@ export default function Home() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.name.endsWith('.md')) {
-      alert('Markdownファイル(.md)を選択してください');
+    const name = file.name.toLowerCase();
+    if (!name.endsWith('.md') && !name.endsWith('.csv') && !name.endsWith('.json')) {
+      alert('Markdown(.md), CSV(.csv), JSON(.json) ファイルを選択してください');
       return;
     }
     const reader = new FileReader();
@@ -426,15 +427,18 @@ export default function Home() {
     e.preventDefault();
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
-    if (file && file.name.endsWith('.md')) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setImportText(event.target?.result as string);
-      };
-      reader.readAsText(file);
-    } else if (file) {
-      alert('Markdownファイル(.md)を選択してください');
+    if (file) {
+      const name = file.name.toLowerCase();
+      if (name.endsWith('.md') || name.endsWith('.csv') || name.endsWith('.json')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setImportText(event.target?.result as string);
+        };
+        reader.readAsText(file);
+        return;
+      }
     }
+    alert('対応するファイル(.md, .csv, .json)を選択してください');
   };
 
   // Load from local storage and handle mounting
@@ -930,7 +934,10 @@ export default function Home() {
     setIsAIAnalyzing(true);
     setShowOverwriteConfirm(false);
     try {
-      const analyzed = await analyzeMarkdown(importText, settings.geminiApiKey);
+      let analyzed = parseStructuredData(importText);
+      if (!analyzed) {
+        analyzed = await analyzeMarkdown(importText, settings.geminiApiKey);
+      }
       
       // Calculate start position for new tables if appending
       let startX = 50;
@@ -1049,7 +1056,7 @@ export default function Home() {
             }}
             className="px-4 py-1.5 text-xs font-medium bg-slate-800 border border-slate-600 rounded hover:bg-slate-700 text-slate-200 transition-colors"
           >
-            .MDをインポート
+            インポート (.md/csv/json)
           </button>
           <button 
             onClick={handleExport}
@@ -2006,9 +2013,9 @@ export default function Home() {
               <div className="p-6 border-b border-slate-700 flex items-center justify-between bg-slate-800/50">
                 <div>
                   <h2 className="text-xl font-bold text-sky-400 tracking-tight flex items-center gap-2">
-                    <Workflow size={24} /> AIスキーマ解析
+                    <Workflow size={24} /> 定義インポート / AI解析
                   </h2>
-                  <p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Markdown形式の仕様書（.md）をアップロードして解析します</p>
+                  <p className="text-xs text-slate-400 uppercase tracking-widest mt-1">.md (AI解析) または .csv, .json の定型ファイルをアップロードします</p>
                 </div>
                 <button onClick={() => setShowImportModal(false)} className="p-2 hover:bg-slate-700 rounded-full text-slate-500 hover:text-white transition-all">
                   <X size={24} />
@@ -2033,7 +2040,7 @@ export default function Home() {
                         type="file" 
                         ref={fileInputRef} 
                         onChange={handleFileUpload} 
-                        accept=".md" 
+                        accept=".md,.csv,.json" 
                         className="hidden" 
                       />
                       <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 group-hover:text-sky-400 transition-colors">
@@ -2041,7 +2048,7 @@ export default function Home() {
                       </div>
                       <div className="text-center">
                         <p className="text-lg font-bold text-slate-200">ファイルをドラッグ＆ドロップ</p>
-                        <p className="text-sm text-slate-500 mt-1">またはクリックしてファイルを選択 (.md)</p>
+                        <p className="text-sm text-slate-500 mt-1">またはクリックしてファイルを選択 (.md, .csv, .json)</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">

@@ -9,6 +9,76 @@ function getAIClient(customKey?: string) {
   return new GoogleGenAI({ apiKey });
 }
 
+export function parseStructuredData(text: string): Partial<Project> | null {
+  const trimmed = text.trim();
+  
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return { tables: parsed };
+      } else if (parsed.tables || parsed.name) {
+        return parsed;
+      }
+    } catch(e) { }
+  }
+
+  // Check if it looks like CSV
+  if (trimmed.includes(',') && trimmed.split('\n').length > 1) {
+    const lines = trimmed.split('\n').filter(l => l.trim().length > 0);
+    const tablesMap = new Map<string, any>();
+    
+    // Check if the file has typical table headers
+    if (trimmed.includes('テーブル') || trimmed.includes('カラム') || lines.length > 1) {
+      lines.forEach((line, i) => {
+        if (i === 0 && (line.includes('テーブル') || line.toLowerCase().includes('table'))) return;
+        const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+        if (cols.length < 3) return; // At least Table, Field, Type
+        
+        const tableName = cols[0];
+        if (!tableName) return;
+        
+        const tableDesc = cols.length > 8 ? cols[1] : '';
+        const offset = cols.length > 8 ? 1 : 0; // if description is present
+
+        const fieldName = cols[1 + offset];
+        const fieldType = cols[2 + offset];
+        const fieldLength = cols[3 + offset] || '';
+        
+        const isPK = /^(1|true|y|yes|pk|〇)/i.test(cols[4 + offset] || '');
+        const isNullable = /^(1|true|y|yes|null|〇)/i.test(cols[5 + offset] || '');
+        const isFK = /^(1|true|y|yes|fk|〇)/i.test(cols[6 + offset] || '');
+        const notes = cols[7 + offset] || '';
+
+        if (!tablesMap.has(tableName)) {
+          tablesMap.set(tableName, {
+            name: tableName,
+            description: tableDesc,
+            fields: []
+          });
+        }
+
+        if (fieldName && fieldType) {
+          tablesMap.get(tableName)!.fields.push({
+            name: fieldName,
+            type: fieldType,
+            length: fieldLength,
+            isPrimaryKey: isPK,
+            isNullable: isNullable,
+            isForeignKey: isFK,
+            notes: notes
+          });
+        }
+      });
+      if (tablesMap.size > 0) {
+        return { tables: Array.from(tablesMap.values()) };
+      }
+    }
+  }
+
+  return null;
+}
+
 export async function analyzeMarkdown(markdown: string, apiKey?: string): Promise<Partial<Project>> {
   const ai = getAIClient(apiKey);
   const prompt = `
