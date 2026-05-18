@@ -62,6 +62,7 @@ import {
   Trash2, 
   Save, 
   FileText, 
+  FileJson,
   Play, 
   Code,
   X,
@@ -261,7 +262,9 @@ export default function Home() {
   const [newRelTargetFieldId, setNewRelTargetFieldId] = useState<string>('');
   const [importText, setImportText] = useState('');
   const [importMode, setImportMode] = useState<'replace' | 'append'>('append');
+  const [importSource, setImportSource] = useState<'ai' | 'structured'>('ai');
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -403,8 +406,12 @@ export default function Home() {
     const file = e.target.files?.[0];
     if (!file) return;
     const name = file.name.toLowerCase();
-    if (!name.endsWith('.md') && !name.endsWith('.csv') && !name.endsWith('.json')) {
-      alert('Markdown(.md), CSV(.csv), JSON(.json) ファイルを選択してください');
+    if (importSource === 'ai' && !name.endsWith('.md')) {
+      alert('Markdownファイル(.md)を選択してください');
+      return;
+    }
+    if (importSource === 'structured' && !name.endsWith('.csv') && !name.endsWith('.json')) {
+      alert('CSV(.csv) または JSON(.json) ファイルを選択してください');
       return;
     }
     const reader = new FileReader();
@@ -429,7 +436,11 @@ export default function Home() {
     const file = e.dataTransfer.files?.[0];
     if (file) {
       const name = file.name.toLowerCase();
-      if (name.endsWith('.md') || name.endsWith('.csv') || name.endsWith('.json')) {
+      const isValid = importSource === 'ai' 
+        ? name.endsWith('.md') 
+        : (name.endsWith('.csv') || name.endsWith('.json'));
+
+      if (isValid) {
         const reader = new FileReader();
         reader.onload = (event) => {
           setImportText(event.target?.result as string);
@@ -438,7 +449,7 @@ export default function Home() {
         return;
       }
     }
-    alert('対応するファイル(.md, .csv, .json)を選択してください');
+    alert(importSource === 'ai' ? 'Markdownファイル(.md)を選択してください' : '対応するファイル(.csv, .json)を選択してください');
   };
 
   // Load from local storage and handle mounting
@@ -919,6 +930,33 @@ export default function Home() {
     saveAs(blob, `${project.name.replace(/\s+/g, '_')}_spec.md`);
   };
 
+  const handleExportCSV = () => {
+    const headers = ['Table', 'Description', 'Field', 'Type', 'Length', 'PK', 'Nullable', 'FK', 'Notes'];
+    const lines = [headers.join(',')];
+    project.tables.forEach(t => {
+      if (t.fields.length === 0) {
+        lines.push([t.name, t.description, '', '', '', '', '', '', ''].map(str => `"${str || ''}"`).join(','));
+      } else {
+        t.fields.forEach(f => {
+          lines.push([
+            t.name, t.description, f.name, f.type, f.length, 
+            f.isPrimaryKey ? '1' : '', 
+            f.isNullable ? '1' : '', 
+            f.isForeignKey ? '1' : '', 
+            f.notes
+          ].map(str => `"${str || ''}"`).join(','));
+        });
+      }
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    saveAs(blob, `${project.name.replace(/\s+/g, '_')}.csv`);
+  };
+
+  const handleExportJSON = () => {
+    const blob = new Blob([JSON.stringify(project.tables, null, 2)], { type: 'application/json' });
+    saveAs(blob, `${project.name.replace(/\s+/g, '_')}_tables.json`);
+  };
+
   const handleAIImport = async () => {
     if (!importText || !importText.trim()) return;
 
@@ -927,15 +965,20 @@ export default function Home() {
       return;
     }
 
-    executeAIImport();
+    executeImport();
   };
 
-  const executeAIImport = async () => {
+  const executeImport = async () => {
     setIsAIAnalyzing(true);
     setShowOverwriteConfirm(false);
     try {
-      let analyzed = parseStructuredData(importText);
-      if (!analyzed) {
+      let analyzed;
+      if (importSource === 'structured') {
+        analyzed = parseStructuredData(importText);
+        if (!analyzed) {
+          throw new Error('CSVまたはJSONのフォーマットが正しくありません');
+        }
+      } else {
         analyzed = await analyzeMarkdown(importText, settings.geminiApiKey);
       }
       
@@ -1050,19 +1093,32 @@ export default function Home() {
         
         <div className="flex items-center gap-3">
           <button 
+            disabled={!settings.geminiApiKey}
             onClick={() => {
               setImportMode('append');
+              setImportSource('ai');
               setShowImportModal(true);
             }}
-            className="px-4 py-1.5 text-xs font-medium bg-slate-800 border border-slate-600 rounded hover:bg-slate-700 text-slate-200 transition-colors"
+            className={`px-4 py-1.5 text-xs font-medium border rounded transition-colors ${!settings.geminiApiKey ? 'bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed opacity-50' : 'bg-slate-800 border-sky-500/50 text-sky-400 hover:bg-slate-700'}`}
+            title={!settings.geminiApiKey ? 'GEMINI APIキーが未設定です' : ''}
           >
-            インポート (.md/csv/json)
+            AI解析(.md)
           </button>
           <button 
-            onClick={handleExport}
-            className="px-4 py-1.5 text-xs font-medium bg-sky-600 rounded hover:bg-sky-500 text-white flex items-center gap-2 transition-all shadow-lg"
+            onClick={() => {
+              setImportMode('append');
+              setImportSource('structured');
+              setShowImportModal(true);
+            }}
+            className="px-4 py-1.5 text-xs font-medium bg-slate-800 border border-emerald-500/50 rounded hover:bg-slate-700 text-emerald-400 transition-colors"
           >
-            <Download size={14} /> MD仕様書をエクスポート
+            定型インポート(.csv/.json)
+          </button>
+          <button 
+            onClick={() => setShowExportModal(true)}
+            className="px-4 py-1.5 text-xs font-medium bg-sky-600 rounded hover:bg-sky-500 text-white flex items-center gap-2 transition-all shadow-lg ml-2"
+          >
+            <Download size={14} /> エクスポート...
           </button>
         </div>
       </header>
@@ -2013,9 +2069,13 @@ export default function Home() {
               <div className="p-6 border-b border-slate-700 flex items-center justify-between bg-slate-800/50">
                 <div>
                   <h2 className="text-xl font-bold text-sky-400 tracking-tight flex items-center gap-2">
-                    <Workflow size={24} /> 定義インポート / AI解析
+                    <Workflow size={24} /> {importSource === 'ai' ? 'AI自動解析インポート (.md)' : '定型データインポート (.csv / .json)'}
                   </h2>
-                  <p className="text-xs text-slate-400 uppercase tracking-widest mt-1">.md (AI解析) または .csv, .json の定型ファイルをアップロードします</p>
+                  <p className="text-xs text-slate-400 uppercase tracking-widest mt-1">
+                    {importSource === 'ai' 
+                      ? 'Markdown形式の仕様書を読み込ませてAIに解釈させます' 
+                      : '規定フォーマットのCSVまたはJSONを選択してください'}
+                  </p>
                 </div>
                 <button onClick={() => setShowImportModal(false)} className="p-2 hover:bg-slate-700 rounded-full text-slate-500 hover:text-white transition-all">
                   <X size={24} />
@@ -2040,7 +2100,7 @@ export default function Home() {
                         type="file" 
                         ref={fileInputRef} 
                         onChange={handleFileUpload} 
-                        accept=".md,.csv,.json" 
+                        accept={importSource === 'ai' ? '.md' : '.csv,.json'} 
                         className="hidden" 
                       />
                       <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 group-hover:text-sky-400 transition-colors">
@@ -2048,7 +2108,7 @@ export default function Home() {
                       </div>
                       <div className="text-center">
                         <p className="text-lg font-bold text-slate-200">ファイルをドラッグ＆ドロップ</p>
-                        <p className="text-sm text-slate-500 mt-1">またはクリックしてファイルを選択 (.md, .csv, .json)</p>
+                        <p className="text-sm text-slate-500 mt-1">またはクリックしてファイルを選択 ({importSource === 'ai' ? '.md' : '.csv, .json'})</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
@@ -2064,27 +2124,31 @@ export default function Home() {
                     </button>
                     
                     <div className="flex items-center gap-4 mt-2">
-                       <p className="text-xs text-slate-500 font-medium">テンプレート:</p>
-                       <button
-                         onClick={() => {
-                           const csv = 'Table, Description, Field, Type, Length, PK, Nullable, FK, Notes\nusers, User table, id, INT, 11, true, false, false, Primary Key\nusers, User table, name, VARCHAR, 255, false, true, false, User Name';
-                           const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-                           saveAs(blob, 'template.csv');
-                         }}
-                         className="px-3 py-1 bg-slate-800 text-slate-300 hover:bg-slate-700 rounded text-xs transition-colors flex items-center gap-1"
-                       >
-                         <Download size={14}/> CSV
-                       </button>
-                       <button
-                         onClick={() => {
-                           const json = '[\n  {\n    "name": "users",\n    "description": "User table",\n    "fields": [\n      {\n        "name": "id",\n        "type": "INT",\n        "length": "11",\n        "isPrimaryKey": true,\n        "isNullable": false,\n        "isForeignKey": false,\n        "notes": "Primary Key"\n      }\n    ]\n  }\n]';
-                           const blob = new Blob([json], { type: 'application/json' });
-                           saveAs(blob, 'template.json');
-                         }}
-                         className="px-3 py-1 bg-slate-800 text-slate-300 hover:bg-slate-700 rounded text-xs transition-colors flex items-center gap-1"
-                       >
-                         <Download size={14}/> JSON
-                       </button>
+                       <p className="text-xs text-slate-500 font-medium">{importSource === 'ai' ? '例:' : 'テンプレート:'}</p>
+                       {importSource === 'structured' && (
+                         <>
+                           <button
+                             onClick={() => {
+                               const csv = 'Table, Description, Field, Type, Length, PK, Nullable, FK, Notes\nusers, User table, id, INT, 11, true, false, false, Primary Key\nusers, User table, name, VARCHAR, 255, false, true, false, User Name';
+                               const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                               saveAs(blob, 'template.csv');
+                             }}
+                             className="px-3 py-1 bg-slate-800 text-slate-300 hover:bg-slate-700 rounded text-xs transition-colors flex items-center gap-1"
+                           >
+                             <Download size={14}/> CSV
+                           </button>
+                           <button
+                             onClick={() => {
+                               const json = '[\n  {\n    "name": "users",\n    "description": "User table",\n    "fields": [\n      {\n        "name": "id",\n        "type": "INT",\n        "length": "11",\n        "isPrimaryKey": true,\n        "isNullable": false,\n        "isForeignKey": false,\n        "notes": "Primary Key"\n      }\n    ]\n  }\n]';
+                               const blob = new Blob([json], { type: 'application/json' });
+                               saveAs(blob, 'template.json');
+                             }}
+                             className="px-3 py-1 bg-slate-800 text-slate-300 hover:bg-slate-700 rounded text-xs transition-colors flex items-center gap-1"
+                           >
+                             <Download size={14}/> JSON
+                           </button>
+                         </>
+                       )}
                     </div>
                   </div>
                 ) : (
@@ -2109,28 +2173,45 @@ export default function Home() {
                 )}
                 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl flex items-start gap-3">
-                    <div className="p-2 bg-amber-500/10 rounded-lg text-amber-500">
-                      <Info size={16} />
+                  {importSource === 'structured' && (
+                    <div className="col-span-2 bg-slate-900/50 border border-slate-800 p-4 rounded-xl flex items-start gap-3">
+                      <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-500">
+                        <Info size={16} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">CSV/JSONフォーマット</p>
+                        <p className="text-[10px] text-slate-500 leading-relaxed">
+                          CSVの場合は Table, Description, Field, Type, Length, PK, Nullable, FK, Notes のヘッダーを使用します。
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">ヒント</p>
-                      <p className="text-[10px] text-slate-500 leading-relaxed">
-                        テーブル定義、フィールド名、データ型、PK/FK等のリレーション情報が含まれていることを確認してください。
-                      </p>
-                    </div>
-                  </div>
-                  <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl flex items-start gap-3">
-                    <div className="p-2 bg-sky-500/10 rounded-lg text-sky-500">
-                      <Sparkles size={16} />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">AI解析</p>
-                      <p className="text-[10px] text-slate-500 leading-relaxed">
-                        Geminiが図面の座標計算から関係性の整理までを自動で行い、ER図としてレンダリングします。
-                      </p>
-                    </div>
-                  </div>
+                  )}
+                  {importSource === 'ai' && (
+                    <>
+                      <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl flex items-start gap-3">
+                        <div className="p-2 bg-amber-500/10 rounded-lg text-amber-500">
+                          <Info size={16} />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">ヒント</p>
+                          <p className="text-[10px] text-slate-500 leading-relaxed">
+                            テーブル定義、フィールド名、データ型、PK/FK等のリレーション情報が含まれていることを確認してください。
+                          </p>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl flex items-start gap-3">
+                        <div className="p-2 bg-sky-500/10 rounded-lg text-sky-500">
+                          <Sparkles size={16} />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">AI解析</p>
+                          <p className="text-[10px] text-slate-500 leading-relaxed">
+                            Geminiが図面の座標計算から関係性の整理までを自動で行い、ER図としてレンダリングします。
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -2167,21 +2248,90 @@ export default function Home() {
                   </button>
                   <button 
                     onClick={handleAIImport}
-                    disabled={!importText || !importText.trim() || isAIAnalyzing}
-                    className="px-8 py-2.5 bg-sky-600 text-white font-bold rounded-lg hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-lg shadow-sky-500/10"
+                    disabled={!importText || !importText.trim() || isAIAnalyzing || (importSource === 'ai' && !settings.geminiApiKey)}
+                    className={`px-8 py-2.5 font-bold rounded-lg transition-all flex items-center gap-2 shadow-lg ${
+                      importSource === 'ai' 
+                        ? 'bg-sky-600 text-white hover:bg-sky-500 shadow-sky-500/10 disabled:bg-slate-700' 
+                        : 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-500/10 disabled:bg-slate-700'
+                    } disabled:text-slate-500 disabled:cursor-not-allowed`}
                   >
                     {isAIAnalyzing ? (
                       <>
                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        設計を分析中...
+                        {importSource === 'ai' ? '設計を分析中...' : 'データをインポート中...'}
                       </>
                     ) : (
                       <>
-                        <Play size={16} fill="currentColor" /> AIで処理を開始
+                        {importSource === 'ai' ? <Sparkles size={16} /> : <Play size={16} fill="currentColor" />}
+                        {importSource === 'ai' ? 'AIで処理を開始' : 'インポート実行'}
                       </>
                     )}
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Export Modal */}
+      <AnimatePresence>
+        {showExportModal && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[60] flex items-center justify-center p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-[#1E293B] border border-slate-700 w-full max-w-sm rounded-xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-700 flex items-center justify-between bg-slate-800/30">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Download size={20} className="text-sky-500" /> エクスポート形式を選択
+                </h3>
+                <button 
+                  onClick={() => setShowExportModal(false)}
+                  className="p-1 hover:bg-slate-700 rounded text-slate-500 hover:text-white transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="p-6 flex flex-col gap-4 bg-[#0F172A]">
+                <button
+                  onClick={() => {
+                    handleExport();
+                    setShowExportModal(false);
+                  }}
+                  className="w-full text-left px-5 py-4 bg-slate-800/50 border border-slate-700 rounded-lg hover:bg-slate-700 transition flex flex-col"
+                >
+                  <span className="text-sm font-bold text-sky-300 flex items-center gap-2"><FileText size={16}/> MD仕様書 (.md)</span>
+                  <span className="text-xs text-slate-500 mt-1 pl-6">人間が読みやすいMarkdown形式</span>
+                </button>
+                <button
+                  onClick={() => {
+                    handleExportCSV();
+                    setShowExportModal(false);
+                  }}
+                  className="w-full text-left px-5 py-4 bg-slate-800/50 border border-slate-700 rounded-lg hover:bg-slate-700 transition flex flex-col"
+                >
+                  <span className="text-sm font-bold text-emerald-300 flex items-center gap-2"><Database size={16}/> CSVテーブル定義 (.csv)</span>
+                  <span className="text-xs text-slate-500 mt-1 pl-6">再利用やスプレッドシート用フォーマット</span>
+                </button>
+                <button
+                  onClick={() => {
+                    handleExportJSON();
+                    setShowExportModal(false);
+                  }}
+                  className="w-full text-left px-5 py-4 bg-slate-800/50 border border-slate-700 rounded-lg hover:bg-slate-700 transition flex flex-col"
+                >
+                  <span className="text-sm font-bold text-amber-300 flex items-center gap-2"><FileJson size={16}/> JSON定義 (.json)</span>
+                  <span className="text-xs text-slate-500 mt-1 pl-6">プログラムから読み込みやすいJSON形式</span>
+                </button>
               </div>
             </motion.div>
           </motion.div>
