@@ -66,21 +66,12 @@ export const TableListItem = memo(({
             />
           </div>
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-            <Copy 
-              size={12} 
-              className="text-slate-500 hover:text-sky-400 cursor-pointer" 
-              onClick={(e) => { e.stopPropagation(); onCopy(table.id); }}
-              title="複製"
-            />
-            <Trash2 
-              size={12} 
-              className="text-slate-500 hover:text-red-400 cursor-pointer" 
-              onClick={(e) => { 
-                e.stopPropagation(); 
-                onDeleteRequest(table.id);
-              }}
-              title="削除"
-            />
+            <span title="複製" className="cursor-pointer" onClick={(e) => { e.stopPropagation(); onCopy(table.id); }}>
+              <Copy size={12} className="text-slate-500 hover:text-sky-400" />
+            </span>
+            <span title="削除" className="cursor-pointer" onClick={(e) => { e.stopPropagation(); onDeleteRequest(table.id); }}>
+              <Trash2 size={12} className="text-slate-500 hover:text-red-400" />
+            </span>
           </div>
         </li>
       )}

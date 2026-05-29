@@ -52,9 +52,8 @@ if (typeof window !== 'undefined') {
   };
 }
 
-import Head from 'next/head';
-import { 
-  Database, 
+import {
+  Database,
   Download, 
   Upload, 
   Bookmark, 
@@ -371,17 +370,17 @@ export default function Home() {
 
   const handleFindNext = () => {
     if (activeTab === 'preview' || searchResults.length === 0) {
-      window.find(searchQuery, false, false, true, false, false, false);
+      (window as any).find(searchQuery, false, false, true, false, false, false);
       return;
     }
     const nextIdx = (currentSearchIndex + 1) % searchResults.length;
     setCurrentSearchIndex(nextIdx);
     focusResult(searchResults, nextIdx);
   };
-  
+
   const handleFindPrev = () => {
     if (activeTab === 'preview' || searchResults.length === 0) {
-      window.find(searchQuery, false, true, true, false, false, false);
+      (window as any).find(searchQuery, false, true, true, false, false, false);
       return;
     }
     const prevIdx = (currentSearchIndex - 1 + searchResults.length) % searchResults.length;
@@ -845,21 +844,22 @@ export default function Home() {
 
   const onDragEnd = useCallback((result: DropResult) => {
     if (!result.destination) return;
-    if (result.source.index === result.destination.index) return;
+    const destination = result.destination;
+    if (result.source.index === destination.index) return;
 
     setProject(currentProject => {
       let newTables = [...currentProject.tables];
 
       if (result.type === 'table') {
         const [reorderedTable] = newTables.splice(result.source.index, 1);
-        newTables.splice(result.destination.index, 0, reorderedTable);
+        newTables.splice(destination.index, 0, reorderedTable);
       } else if (result.type === 'field') {
         const tableId = result.source.droppableId.replace('fields-', '');
         newTables = newTables.map(t => {
           if (t.id === tableId) {
             const newFields = [...t.fields];
             const [reorderedField] = newFields.splice(result.source.index, 1);
-            newFields.splice(result.destination.index, 0, reorderedField);
+            newFields.splice(destination.index, 0, reorderedField);
             return { ...t, fields: newFields };
           }
           return t;
@@ -1801,7 +1801,7 @@ export default function Home() {
                           key={table.id}
                           table={table}
                           isSelected={selectedTableId === table.id}
-                          environmentId={project.environmentId}
+                          environmentId={project.environmentId ?? null}
                           dbEnvironments={settings.dbEnvironments}
                           onSelect={setSelectedTableId}
                           onUpdateTable={updateTable}
@@ -2478,7 +2478,7 @@ export default function Home() {
                   キャンセル
                 </button>
                 <button 
-                  onClick={executeAIImport}
+                  onClick={executeImport}
                   className="px-6 py-2 bg-amber-600 text-white font-black text-[10px] uppercase tracking-widest rounded-lg hover:bg-amber-500 transition-all shadow-lg shadow-amber-500/10"
                 >
                   はい、上書きします
