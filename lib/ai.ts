@@ -28,7 +28,7 @@ export async function validateApiKey(apiKey: string): Promise<ApiKeyValidationRe
   const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
   try {
     await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-3.5-flash",
       contents: [{ parts: [{ text: "1" }] }],
     });
     return { valid: true, message: 'APIキーは正常に使用できます。' };
@@ -196,7 +196,7 @@ export async function analyzeMarkdown(markdown: string, apiKey?: string): Promis
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: "gemini-3.5-flash",
       contents: [{ parts: [{ text: prompt }] }],
     });
 
@@ -272,7 +272,7 @@ export async function layoutTables(project: Project, apiKey?: string): Promise<R
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: "gemini-3.5-flash",
       contents: [{ parts: [{ text: prompt }] }],
     });
 
