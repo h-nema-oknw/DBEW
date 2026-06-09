@@ -1,12 +1,93 @@
 import { GoogleGenAI } from "@google/genai";
 import { Project } from "./types";
 
+export type ApiKeyValidationResult = {
+  valid: boolean;
+  message: string;
+  hint?: string;
+  rawError?: string;
+};
+
 function getAIClient(customKey?: string) {
   const apiKey = customKey || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("Gemini API Key is missing. Please set it in Settings or environment variables.");
   }
   return new GoogleGenAI({ apiKey });
+}
+
+export async function validateApiKey(apiKey: string): Promise<ApiKeyValidationResult> {
+  if (!apiKey.trim()) {
+    return {
+      valid: false,
+      message: 'APIキーを入力してください。',
+      hint: 'Google AI Studio (https://aistudio.google.com/app/apikey) でAPIキーを取得できます。',
+    };
+  }
+
+  const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
+  try {
+    await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: [{ parts: [{ text: "1" }] }],
+    });
+    return { valid: true, message: 'APIキーは正常に使用できます。' };
+  } catch (error: any) {
+    const status: number | undefined = error?.status ?? error?.httpStatus;
+    const raw: string = error?.message || String(error);
+
+    if (status === 400 || raw.includes('API_KEY_INVALID') || raw.includes('INVALID_ARGUMENT')) {
+      return {
+        valid: false,
+        message: 'APIキーが無効です。',
+        hint: 'キーのコピー漏れや余分なスペースがないか確認してください。Google AI Studioで新しいキーを発行することも有効です。',
+        rawError: raw,
+      };
+    }
+
+    if (status === 403 || raw.includes('PERMISSION_DENIED')) {
+      return {
+        valid: false,
+        message: 'このAPIキーにはGemini APIへのアクセス権がありません。',
+        hint: 'Google AI StudioでGemini APIが有効化されているか確認してください。プロジェクトのAPI制限設定も確認してください。',
+        rawError: raw,
+      };
+    }
+
+    if (status === 429 || raw.includes('RESOURCE_EXHAUSTED')) {
+      return {
+        valid: true,
+        message: 'APIキーは有効ですが、現在レート制限（quota超過）に達しています。',
+        hint: 'しばらく時間をおいてから再試行してください。Google AI Studioで使用量とQuotaを確認してください。',
+        rawError: raw,
+      };
+    }
+
+    if (status === 503 || status === 500 || raw.includes('SERVICE_UNAVAILABLE')) {
+      return {
+        valid: false,
+        message: 'Google Gemini サービスが現在利用できません。',
+        hint: 'Googleのサービス障害の可能性があります。しばらく待ってから再試行してください。',
+        rawError: raw,
+      };
+    }
+
+    if (raw.toLowerCase().includes('fetch') || raw.toLowerCase().includes('network') || raw.toLowerCase().includes('enotfound')) {
+      return {
+        valid: false,
+        message: 'ネットワークエラーが発生しました。',
+        hint: 'インターネット接続を確認してください。プロキシやファイアウォールがGoogle APIへのアクセスをブロックしていないか確認してください。',
+        rawError: raw,
+      };
+    }
+
+    return {
+      valid: false,
+      message: '検証中に予期しないエラーが発生しました。',
+      hint: '時間をおいて再試行してください。問題が続く場合はAPIキーを再発行してください。',
+      rawError: raw,
+    };
+  }
 }
 
 export function parseStructuredData(text: string): Partial<Project> | null {

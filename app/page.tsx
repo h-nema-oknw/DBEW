@@ -80,7 +80,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import Diagram from '@/components/Diagram';
 import { Project, Table, Field, Relation, DBType, AppSettings, DBTypeOption, DBEnvironment } from '@/lib/types';
-import { generateMarkdown, analyzeMarkdown, layoutTables, parseStructuredData } from '@/lib/ai';
+import { generateMarkdown, analyzeMarkdown, layoutTables, parseStructuredData, validateApiKey, ApiKeyValidationResult } from '@/lib/ai';
 import { saveAs } from 'file-saver';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -255,6 +255,8 @@ export default function Home() {
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAIAnalyzing, setIsAIAnalyzing] = useState(false);
+  const [apiKeyValidStatus, setApiKeyValidStatus] = useState<'idle' | 'loading' | 'valid' | 'invalid'>('idle');
+  const [apiKeyValidResult, setApiKeyValidResult] = useState<ApiKeyValidationResult | null>(null);
   const [relationEditingField, setRelationEditingField] = useState<{ tableId: string, fieldId: string } | null>(null);
   const [newRelSourceFieldId, setNewRelSourceFieldId] = useState<string>('');
   const [newRelTargetTableId, setNewRelTargetTableId] = useState<string>('');
@@ -885,6 +887,14 @@ export default function Home() {
       <div className="w-10 h-10 border-4 border-sky-500 border-t-transparent rounded-full animate-spin" />
     </div>;
   }
+
+  const handleValidateApiKey = async () => {
+    setApiKeyValidStatus('loading');
+    setApiKeyValidResult(null);
+    const result = await validateApiKey(settings.geminiApiKey);
+    setApiKeyValidStatus(result.valid ? 'valid' : 'invalid');
+    setApiKeyValidResult(result);
+  };
 
   const handleAutoLayout = async () => {
     if (project.tables.length === 0) return;
@@ -1734,13 +1744,50 @@ export default function Home() {
                                 キーを取得する <LayoutGrid size={10} />
                               </a>
                             </div>
-                            <input 
+                            <input
                               type="password"
                               value={settings.geminiApiKey}
-                              onChange={(e) => setSettings({...settings, geminiApiKey: e.target.value})}
+                              onChange={(e) => {
+                                setSettings({...settings, geminiApiKey: e.target.value});
+                                setApiKeyValidStatus('idle');
+                                setApiKeyValidResult(null);
+                              }}
                               placeholder="Enter your Gemini API key here..."
                               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-6 py-4 text-emerald-400 font-mono text-sm outline-none focus:border-amber-500/50 transition-colors shadow-inner"
                             />
+                            <button
+                              onClick={handleValidateApiKey}
+                              disabled={!settings.geminiApiKey || apiKeyValidStatus === 'loading'}
+                              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold uppercase tracking-widest hover:bg-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            >
+                              {apiKeyValidStatus === 'loading'
+                                ? <span className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                                : <Sparkles size={12} />
+                              }
+                              接続テスト
+                            </button>
+                            {apiKeyValidStatus === 'valid' && apiKeyValidResult && (
+                              <div className="bg-emerald-500/5 border border-emerald-500/20 p-4 rounded-xl space-y-1">
+                                <p className="text-xs text-emerald-400 font-bold">✓ {apiKeyValidResult.message}</p>
+                                {apiKeyValidResult.hint && (
+                                  <p className="text-xs text-emerald-400/60">{apiKeyValidResult.hint}</p>
+                                )}
+                              </div>
+                            )}
+                            {apiKeyValidStatus === 'invalid' && apiKeyValidResult && (
+                              <div className="bg-red-500/5 border border-red-500/20 p-4 rounded-xl space-y-2">
+                                <p className="text-xs text-red-400 font-bold">✗ {apiKeyValidResult.message}</p>
+                                {apiKeyValidResult.hint && (
+                                  <p className="text-xs text-red-400/70 leading-relaxed">{apiKeyValidResult.hint}</p>
+                                )}
+                                {apiKeyValidResult.rawError && (
+                                  <details className="text-[10px] text-slate-500 mt-1">
+                                    <summary className="cursor-pointer hover:text-slate-400">詳細エラー情報</summary>
+                                    <pre className="mt-1 bg-slate-950 p-2 rounded overflow-x-auto whitespace-pre-wrap break-all">{apiKeyValidResult.rawError}</pre>
+                                  </details>
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           <div className="bg-amber-500/5 border border-amber-500/10 p-4 rounded-xl flex gap-3">
