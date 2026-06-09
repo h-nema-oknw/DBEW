@@ -17,7 +17,7 @@ function getAIClient(customKey?: string) {
   if (!apiKey) {
     throw new Error("Gemini API Key is missing. Please set it in Settings or environment variables.");
   }
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({ apiKey, httpOptions: { apiVersion: 'v1' } });
 }
 
 export async function validateApiKey(apiKey: string, model?: 'flash' | 'pro'): Promise<ApiKeyValidationResult> {
@@ -29,7 +29,7 @@ export async function validateApiKey(apiKey: string, model?: 'flash' | 'pro'): P
     };
   }
 
-  const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
+  const ai = new GoogleGenAI({ apiKey: apiKey.trim(), httpOptions: { apiVersion: 'v1' } });
   try {
     await ai.models.generateContent({
       model: resolveModel(model),
