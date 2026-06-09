@@ -136,6 +136,7 @@ const INITIAL_PROJECT: Project = {
 
 const DEFAULT_SETTINGS: AppSettings = {
   initialView: 'design',
+  geminiModel: 'flash',
   dbTypes: [
     { id: 'rel', name: 'Relational (RDBMS)' },
     { id: 'doc', name: 'Document (NoSQL)' },
@@ -891,7 +892,7 @@ export default function Home() {
   const handleValidateApiKey = async () => {
     setApiKeyValidStatus('loading');
     setApiKeyValidResult(null);
-    const result = await validateApiKey(settings.geminiApiKey);
+    const result = await validateApiKey(settings.geminiApiKey, settings.geminiModel);
     setApiKeyValidStatus(result.valid ? 'valid' : 'invalid');
     setApiKeyValidResult(result);
   };
@@ -900,7 +901,7 @@ export default function Home() {
     if (project.tables.length === 0) return;
     setIsAIAnalyzing(true);
     try {
-      const positions = await layoutTables(project, settings.geminiApiKey);
+      const positions = await layoutTables(project, settings.geminiApiKey, settings.geminiModel);
       handleUpdateProject({
         tables: project.tables.map(t => ({
           ...t,
@@ -989,7 +990,7 @@ export default function Home() {
           throw new Error('CSVまたはJSONのフォーマットが正しくありません');
         }
       } else {
-        analyzed = await analyzeMarkdown(importText, settings.geminiApiKey);
+        analyzed = await analyzeMarkdown(importText, settings.geminiApiKey, settings.geminiModel);
       }
       
       // Calculate start position for new tables if appending
@@ -1788,6 +1789,34 @@ export default function Home() {
                                 )}
                               </div>
                             )}
+                          </div>
+
+                          <div className="space-y-3">
+                            <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Model Tier</label>
+                            <div className="grid grid-cols-2 gap-3">
+                              {([
+                                { value: 'flash', label: 'Flash', model: 'gemini-flash', desc: '高速・低コスト。通常の設計支援に最適。' },
+                                { value: 'pro',   label: 'Pro',   model: 'gemini-pro',   desc: '高精度。複雑なスキーマ解析に最適。' },
+                              ] as const).map(opt => (
+                                <button
+                                  key={opt.value}
+                                  onClick={() => {
+                                    setSettings({...settings, geminiModel: opt.value});
+                                    setApiKeyValidStatus('idle');
+                                    setApiKeyValidResult(null);
+                                  }}
+                                  className={`flex flex-col gap-1 p-4 rounded-xl border text-left transition-all ${
+                                    settings.geminiModel === opt.value
+                                      ? 'border-amber-500/50 bg-amber-500/10 text-amber-400'
+                                      : 'border-slate-800 bg-slate-900/40 text-slate-500 hover:border-slate-700'
+                                  }`}
+                                >
+                                  <span className="font-black text-sm uppercase tracking-widest">{opt.label}</span>
+                                  <span className="font-mono text-[10px] opacity-60">{opt.model}</span>
+                                  <span className="text-[11px] leading-relaxed mt-1">{opt.desc}</span>
+                                </button>
+                              ))}
+                            </div>
                           </div>
 
                           <div className="bg-amber-500/5 border border-amber-500/10 p-4 rounded-xl flex gap-3">

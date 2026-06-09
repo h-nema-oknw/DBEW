@@ -18,6 +18,7 @@ export interface AppSettings {
   dbEnvironments: DBEnvironment[];
   selectedEnvironmentId: string;
   geminiApiKey: string;
+  geminiModel: 'flash' | 'pro';
 }
 
 export interface Field {

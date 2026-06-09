@@ -8,6 +8,10 @@ export type ApiKeyValidationResult = {
   rawError?: string;
 };
 
+function resolveModel(tier?: 'flash' | 'pro'): string {
+  return tier === 'pro' ? 'gemini-pro' : 'gemini-flash';
+}
+
 function getAIClient(customKey?: string) {
   const apiKey = customKey || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
   if (!apiKey) {
@@ -16,7 +20,7 @@ function getAIClient(customKey?: string) {
   return new GoogleGenAI({ apiKey });
 }
 
-export async function validateApiKey(apiKey: string): Promise<ApiKeyValidationResult> {
+export async function validateApiKey(apiKey: string, model?: 'flash' | 'pro'): Promise<ApiKeyValidationResult> {
   if (!apiKey.trim()) {
     return {
       valid: false,
@@ -28,7 +32,7 @@ export async function validateApiKey(apiKey: string): Promise<ApiKeyValidationRe
   const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
   try {
     await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: resolveModel(model),
       contents: [{ parts: [{ text: "1" }] }],
     });
     return { valid: true, message: 'APIキーは正常に使用できます。' };
@@ -160,7 +164,7 @@ export function parseStructuredData(text: string): Partial<Project> | null {
   return null;
 }
 
-export async function analyzeMarkdown(markdown: string, apiKey?: string): Promise<Partial<Project>> {
+export async function analyzeMarkdown(markdown: string, apiKey?: string, model?: 'flash' | 'pro'): Promise<Partial<Project>> {
   const ai = getAIClient(apiKey);
   const prompt = `
     以下のMarkdownデータベース仕様書を分析し、デザインを抽出してください。
@@ -196,7 +200,7 @@ export async function analyzeMarkdown(markdown: string, apiKey?: string): Promis
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: resolveModel(model),
       contents: [{ parts: [{ text: prompt }] }],
     });
 
@@ -248,7 +252,7 @@ export function generateMarkdown(project: Project): string {
   return md;
 }
 
-export async function layoutTables(project: Project, apiKey?: string): Promise<Record<string, { x: number; y: number }>> {
+export async function layoutTables(project: Project, apiKey?: string, model?: 'flash' | 'pro'): Promise<Record<string, { x: number; y: number }>> {
   const ai = getAIClient(apiKey);
   const prompt = `
     以下のデータベース構造（テーブルとリレーション）を分析し、ER図として見やすい最適な座標（x, y）を決定してください。
@@ -272,7 +276,7 @@ export async function layoutTables(project: Project, apiKey?: string): Promise<R
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: resolveModel(model),
       contents: [{ parts: [{ text: prompt }] }],
     });
 
